@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  
+  <title>Educação - Sistema de Educação</title>
+  <meta charset="utf8">
+  <meta name="robots" content="noindex, nofollow" />
+  <meta content="authenticity_token" name="csrf-param" />
+<meta content="0KPQaf0u+MBGOGGrBRg+x47phQPZvT8Ur1VYv3qiWjA=" name="csrf-token" />
+  <meta name="ajuda-interativa" content="grades_index">
+  <meta name="ajuda-interativa-user-id" content="204292">
+
+  <link href="https://segesassets.sedu.es.gov.br/assets/hite/bootstrap-cc47b706c4cb658ca5b403dc3fdb02df.css" media="all" rel="stylesheet" type="text/css" />
+<link href="https://segesassets.sedu.es.gov.br/assets/hite/print-52a4b2302de6e2cc5e136477ce0e2d6d.css" media="all" rel="stylesheet" type="text/css" />
+  <link href="https://segesassets.sedu.es.gov.br/assets/hite/bootstrap-theme-1352d49c98c3f9e51441bb745095ac9d.css" media="screen" rel="stylesheet" type="text/css" />
+<link href="https://segesassets.sedu.es.gov.br/assets/hite/font-awesome-95acab82b2369625dd2b7ba6735fe5c3.css" media="screen" rel="stylesheet" type="text/css" />
+<link href="https://segesassets.sedu.es.gov.br/assets/hite/style-40670c41efff995ce286dff3c2c938df.css" media="screen" rel="stylesheet" type="text/css" />
+<link href="https://segesassets.sedu.es.gov.br/assets/webpack-bf94e36b1aa2467dd6195bb540707983.css" media="screen" rel="stylesheet" type="text/css" />
+<link href="https://segesassets.sedu.es.gov.br/assets/toastr-9cb6ff73a7efbb0aeff28934eac4d6a7.css" media="screen" rel="stylesheet" type="text/css" />
+<link href="https://segesassets.sedu.es.gov.br/assets/bootstrap-spacing-helpers-6092d110d8727a70370b5110cc9f2dec.css" media="screen" rel="stylesheet" type="text/css" />
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:400,700&display=swap" rel="stylesheet">
+
+  <link href="https://segesassets.sedu.es.gov.br/assets/custom_templates/hite/es-1c77e3410b6762be3008f22a90de655f.css" media="screen" rel="stylesheet" type="text/css" />
+
+  
+
+  
+</head>
+<body class="">
+  
+    <script>
+    // Avoid layout flickering by adding those styles before rendering anything
+    // since this partial is included right after <body> tag.
+    (function () {
+      if (window.localStorage) {
+        var fontSize = localStorage.getItem("fontSize")
+
+        if (fontSize) {
+          document.body.style.fontSize = fontSize + "px"
+        }
+
+        var highContrast = localStorage.getItem("highContrast") === "true"
+
+        if (highContrast) {
+          document.body.className += " high-contrast"
+        }
+      }
+    })()
+  </script>
+
+  <div id="accessibility" class="hidden-print">
+    <ul class="list-inline">
+      <li>
+        <a href="javascript:void(0)" data-keyboard-shortcut="1" data-toggle="menu">Ir para o menu (ALT + 1)</a>
+      </li>
+      <li>
+        <a href="javascript:void(0)" data-keyboard-shortcut="2" data-toggle="content">Ir para o conteúdo (ALT + 2)</a>
+      </li>
+      <li>
+        <a href="javascript:void(0)" data-keyboard-shortcut="3" data-toggle="increase-font">Aumentar fonte (ALT + 3)</a>
+      </li>
+      <li>
+        <a href="javascript:void(0)" data-keyboard-shortcut="4" data-toggle="decrease-font">Diminuir fonte (ALT + 4)</a>
+      </li>
+      <li>
+        <a href="javascript:void(0)" data-keyboard-shortcut="5" data-toggle="high-contrast">Alto contraste (ALT + 5)</a>
+      </li>
+      <li>
+        <a href="/accessibility" data-keyboard-shortcut="6">Acessibilidade (ALT + 6)</a>
+      </li>
+      <li>
+        <a href="/sitemap" data-keyboard-shortcut="7">Mapa (ALT + 7)</a>
+      </li>
+    </ul>
+  </div>
+
+
+  <div id="header" class="hidden-print">
+    <div id="logo"></div>
+
+      <div id="logotipo-custom">
+        <a href="/" title="Página inicial">
+          <img alt="Logotipo" src="https://appolus-syens-es.s3.amazonaws.com/uploads/SEGES-SEDU_01.png?X-Amz-Expires=3600&amp;X-Amz-Date=20260501T023557Z&amp;X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Credential=AKIAW3ADDVRGZOBCMHTP/20260501/us-east-1/s3/aws4_request&amp;X-Amz-SignedHeaders=host&amp;X-Amz-Signature=ea0cf0c9a946fb60badf1ba282c6778fb0c14b23c7b3bfe3d9835edda757f69f" />
+</a>      </div>
+
+    <div class="info-boxes">
+      <div class="informa-usuario">
+        <a href="/account">GOSHAI DAIAN LOUREIRO</a>
+        <a href="/users/sign_out" data-confirm="Tem certeza que deseja sair do sistema?">SAIR</a>
+      </div>
+
+      <div class="informa-escola">
+        <a href="/context/schools">CEEMTI MONSENHOR GUILHERME SCHMITZ</a>
+      </div>
+
+      <div class="informa-ano">
+        ANO LETIVO:
+        <a href="/context/school_years">2026</a>
+        PERFIL DE ACESSO:
+        <a href="/context/profiles">PROFESSOR</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrapper">
+    <div id="main-menu" class="navbar navbar-default hidden-print">
+      <ul class="nav navbar-nav"><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-home"></i>Secretaria<b class="caret"></b></a><ul class="dropdown-menu"><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-calendar"></i>Calendário<b class="caret"></b></a><ul class="dropdown-menu"><li><a data_menu_key="calendarios" href="/calendarios/"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-calendar" data-menu-image="menu/icones/calendario.png" data-menu-key="calendarios" data-menu-name="Calendários" data-menu-url="/calendarios/" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-calendar"></i>Calendários</a></li><li><a data_menu_key="diversified_calendars" href="/diversified_calendars/"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-calendar" data-menu-image="menu/icones/calendario.png" data-menu-key="diversified_calendars" data-menu-name="Calendários Diversificados" data-menu-url="/diversified_calendars/" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-calendar"></i>Calendários Diversificados</a></li></ul></li></ul></li><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-home"></i>Escola<b class="caret"></b></a><ul class="dropdown-menu"><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-home"></i>Infraestrutura<b class="caret"></b></a><ul class="dropdown-menu"><li><a data_menu_key="turma_diversificadas" href="/turma_diversificadas/"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/turma.png" data-menu-key="turma_diversificadas" data-menu-name="Turmas atend. diversificado" data-menu-url="/turma_diversificadas/" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Turmas atend. diversificado</a></li></ul></li></ul></li><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-home"></i>Secretário/Professor<b class="caret"></b></a><ul class="dropdown-menu"><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-user"></i>Professor<b class="caret"></b></a><ul class="dropdown-menu"><li><a data_menu_key="gradebooks" href="/gradebooks"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/diarios.png" data-menu-key="gradebooks" data-menu-name="Diários" data-menu-url="/gradebooks" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Diários</a></li><li><a data_menu_key="weekly_plans" href="/weekly_plans"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-edit" data-menu-image="menu/icones/diarios.png" data-menu-key="weekly_plans" data-menu-name="Planos Semanais" data-menu-url="/weekly_plans" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-edit"></i>Planos Semanais</a></li></ul></li><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-home"></i>Avaliações e Frequência<b class="caret"></b></a><ul class="dropdown-menu"><li><a data_menu_key="avaliacao_modo_avancados_turmas" href="/avaliacao_modo_avancados/turmas"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/lancar_notas.png" data-menu-key="avaliacao_modo_avancados_turmas" data-menu-name="Lançar Notas" data-menu-url="/avaliacao_modo_avancados/turmas" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Lançar Notas</a></li><li><a data_menu_key="absences" href="/absences"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/falta.png" data-menu-key="absences" data-menu-name="Lançar faltas turma regular" data-menu-url="/absences" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Lançar faltas turma regular</a></li><li><a data_menu_key="diversified_classroom_performance_evaluations" href="/diversified_classroom_performance_evaluations"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/lancar_notas.png" data-menu-key="diversified_classroom_performance_evaluations" data-menu-name="Lançar Notas (TD)" data-menu-url="/diversified_classroom_performance_evaluations" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Lançar Notas (TD)</a></li><li><a data_menu_key="turma_diversificada_aulas_pesquisar" href="/turma_diversificada_aulas/pesquisar"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/falta.png" data-menu-key="turma_diversificada_aulas_pesquisar" data-menu-name="Lançar Faltas Diárias (TD)" data-menu-url="/turma_diversificada_aulas/pesquisar" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Lançar Faltas Diárias (TD)</a></li><li><a data_menu_key="stage_appraisals" href="/stage_appraisals"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/apurracao.png" data-menu-key="stage_appraisals" data-menu-name="Apuração de Etapas" data-menu-url="/stage_appraisals" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Apuração de Etapas</a></li></ul></li></ul></li><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-home"></i>Nutrição<b class="caret"></b></a><ul class="dropdown-menu"><li><a data_menu_key="nutrition_programs" href="/nutrition_programs"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-folder-open" data-menu-image="menu/icones/ava_freq.png" data-menu-key="nutrition_programs" data-menu-name="Nutrição Escolar" data-menu-url="/nutrition_programs" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-folder-open"></i>Nutrição Escolar</a></li></ul></li><li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown" data_menu_key="" href="javascript:void(0)"><span class="star-icon glyphicon"></span><i class="glyphicon glyphicon-cog"></i>Segurança<b class="caret"></b></a><ul class="dropdown-menu"><li><a data_menu_key="lgpd" href="/lgpd"><span class="star-icon glyphicon glyphicon-star-empty" data-favorite="false" data-menu-icon="glyphicon glyphicon-ok" data-menu-image="menu/icones/reclassificar.png" data-menu-key="lgpd" data-menu-name="LGPD" data-menu-url="/lgpd" data-toggle-url="/menu_favorites/toggle"></span><i class="glyphicon glyphicon-ok"></i>LGPD</a></li></ul></li></ul>
+
+    </div>
+  </div>
+
+
+  <div id="main-container" class="container">
+    <div id="main-wrapper">
+      <div id="flashes">
+        
+        
+
+      </div>
+
+      <ul class="breadcrumb">
+  <li>Secretário/Professor</li>
+  <li>Avaliações e Frequência</li>
+  <li><a href="/avaliacao_modo_avancados/turmas">Lançar Notas</a></li>
+  <li>3ªV01-EM-TVC</li>
+  <li><a href="/avaliacao_modo_avancados?etapa_id=5276&amp;turma_id=36047">1 TRIMESTRE</a></li>
+  <li>HISTÓRIA</li>
+  <li class="active">
+      Lançar Notas
+  </li>
+</ul>
+
+<h2>
+    Lançar Notas
+</h2>
+
+<div class="panel panel-default">
+  <div class="panel-heading">
+    Turma
+  </div>
+
+  <div class="panel-body">
+    <dl>
+      <dt>Nome</dt>
+      <dd>3ªV01-EM-TVC</dd>
+    </dl>
+
+    <table class="table table-bordered">
+      <tr>
+        <th>Ano de escolaridade</th>
+        <th>Modalidade</th>
+        <th>Turno</th>
+        <th>Sala</th>
+      </tr>
+      <tr>
+        <td>ENSINO MEDIO - 3ª SERIE</td>
+        <td>Ensino regular</td>
+        <td>TARDE</td>
+        <td>SALA 05</td>
+      </tr>
+
+        <tr>
+          <th>Valor da etapa</th>
+          <th>Valor da média</th>
+          <th>Pontos distribuídos</th>
+          <th>Situação dos pontos</th>
+        </tr>
+        <tr>
+          <td>30</td>
+          <td>18</td>
+          <td>30</td>
+          <td>
+              <span class="label label-success">Distribuídos</span>
+          </td>
+        </tr>
+
+      <tr>
+        <th>Etapa</th>
+        <th>Disciplina</th>
+        <th>Professor</th>
+        <th>Apuração</th>
+      </tr>
+      <tr>
+        <td>1 TRIMESTRE</td>
+        <td>HISTÓRIA</td>
+        <td>GOSHAI DAIAN LOUREIRO</td>
+        <td>
+            <span class="label label-success">Aberta</span>
+        </td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+
+  <p class="alert alert-warning">
+      As notas serão salvas automaticamente. O destaque em amarelo indica que a nota foi salva com sucesso.
+  </p>
+
+
+
+
+<div id="vue-app">
+  <p class="text-muted">
+    <em class="fa fa-spin fa-spinner"></em> Carregando...
+  </p>
+</div>
+
+<script>
+  window.preloadedState = {
+    dataUrl: "/grades/data?classroom_id=36047&curriculum_discipline_id=258090&stage_id=5276"
+  }
+</script>
+
+<script src="https://segesassets.sedu.es.gov.br/assets/webpack/grades-5201c6952b60afb742f686c611416f29.js" type="text/javascript"></script>
+
+    <a href="/grades/close?classroom_id=36047&amp;curriculum_discipline_id=258090&amp;stage_id=5276" class="btn btn-primary" data-disable-with="Aguarde..." data-method="post" rel="nofollow">Finalizar apuração de notas</a>
+
+<a href="/avaliacao_modo_avancados?etapa_id=5276&amp;turma_id=36047" class="btn btn-default">Voltar</a>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('closed') === 'true') {
+      alert('As notas deste componente estão sendo apuradas.\n' +
+            'Você pode sair da tela e realizar outras operações, ' +
+            'enquanto o sistema conclui o processamento em segundo plano.');
+    }
+  });
+</script>
+
+    </div>
+  </div>
+
+  <ul id="footer" class="hidden-print">
+
+
+
+    <li>
+      <a href="/manuais">Manuais</a>
+    </li>
+
+
+    <li>
+        <a href="/versoes">Defina agora o número da versão</a>
+    </li>
+  </ul>
+
+
+    <div id="optional-logo" class="hidden-print">
+      <img alt="Aws4_request&amp;x-amz-signedheaders=host&amp;x-amz-signature=84cdd275823e465fe6a86c6e8e6dcb8c023c1c56716994af46bdd8ca672f1921" src="https://appolus-syens-es.s3.amazonaws.com/uploads/default_Appolus.png?X-Amz-Expires=3600&amp;X-Amz-Date=20260501T023557Z&amp;X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Credential=AKIAW3ADDVRGZOBCMHTP/20260501/us-east-1/s3/aws4_request&amp;X-Amz-SignedHeaders=host&amp;X-Amz-Signature=84cdd275823e465fe6a86c6e8e6dcb8c023c1c56716994af46bdd8ca672f1921" />
+    </div>
+
+  <div class="hidden-print">
+    <style>
+  #timeout {
+    display: none;
+    line-height: 24px;
+    text-align: center;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 9000;
+    border: 3px dashed #F5C7B0;
+    background: #fff0b3;
+    color: #333;
+    cursor: pointer;
+    padding: 0 5px;
+  }
+
+  #timeout.warning { color: #ff3300; }
+
+  #refresh-modal {
+    display: none;
+    border: 1px solid rgba(0, 0, 0, .2);
+    border-radius: 6px;
+    box-shadow: 0 5px 10px rgba(0, 0, 0, .2);
+    background: #fff;
+    position: fixed;
+    left: 50%;
+    top: 20%;
+    margin-left: -150px;
+    width: 300px;
+    padding: 30px 0;
+  }
+
+  #refresh-modal p {
+    font-size: 13px;
+    font-weight: bold;
+    text-align: center;
+    color: #555;
+  }
+
+  #refresh-modal button {
+    padding: 10px 20px;
+    border: 1px solid rgba(0, 0, 0, .2);
+    border-radius: 5px;
+    background-color: #0B5E96;
+    color: #fff;
+    font-weight: bold;
+    position: relative;
+    left: 50%;
+    margin-left: -35px;
+  }
+</style>
+
+<span id="timeout"></span>
+
+<div id="refresh-modal">
+  <p>Você ainda está aí?</p>
+  <button type="button">Sim</button>
+</div>
+
+<script>
+  window.deviseTimeout = "2026-05-01 03:00:57 UTC";
+  window.currentUser = {"login":"07404512603","adm":false};
+  window.currentCustomer = {"face_recognizer_api":false,"name":"SECRETARIA ESTADUAL DE EDUCACAO DO ESPIRITO SANTO"};
+</script>
+
+<script src="https://segesassets.sedu.es.gov.br/assets/hite/jquery-1.10.2-82b83b93c1dc17ce341f3badbb75fba7.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/moment.min-d781f67bdd990cc66fef3546e00bb352.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/session_timer-13a736a8efbc1926066d3ae3ec2a81d4.js" type="text/javascript"></script>
+
+  </div>
+
+  <script src="https://segesassets.sedu.es.gov.br/assets/hite/jquery-1.10.2-82b83b93c1dc17ce341f3badbb75fba7.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/hite/jquery-ui-effects.min-d271191be934a0fc7add05e1d0e4326f.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/jquery-ujs-36114560e182cf4e10ba1e209c2f4263.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/hite/bootstrap-6009314eb020827881697823b3b593bb.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/hite/menu-9024176281eddf00444986b79d617f8b.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/hite/menu_favorites-747054a3ed9f61745e1a93f0a04caade.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/hite/accessibility-f593ddaaa51507485e470f197d216fa0.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/hite/autoload-6926fe681a8e674ea4e4c635a1ae25ea.js" type="text/javascript"></script>
+<script src="https://segesassets.sedu.es.gov.br/assets/cocoon-7dd884ff35e24be5af947c90825257e3.js" type="text/javascript"></script>
+  
+
+  <script>
+    window.queueMetrics = {"queue_metric":{"at":"Qui, 30 de Abril de 2026, 23:34","latency":0.0,"both_message":"Tempo m\u00e9dio de processamento: menos de 1 minuto","absence_avg_latency":0.0,"absence_message":"Tempo m\u00e9dio de processamento: menos de 1 minuto","note_avg_latency":0.0,"note_message":"Tempo m\u00e9dio de processamento: menos de 1 minuto","peaks":[{"starts":"07:00","ends":"11:00","sum":10},{"starts":"13:00","ends":"15:00","sum":3}]}};
+  </script>
+
+  <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-NHY1CG8B7H"></script>
+<script>
+ window.dataLayer = window.dataLayer || [];
+ function gtag(){dataLayer.push(arguments);}
+ gtag('js', new Date());
+
+ gtag('config', 'G-NHY1CG8B7H');
+</script>
+</body>
+</html>
