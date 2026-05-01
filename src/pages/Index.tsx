@@ -24,12 +24,12 @@ const Index = () => {
   const [columns, setColumns] = useState<string[]>([]);
   const [studentNameCol, setStudentNameCol] = useState<string>('');
   const [activities, setActivities] = useState<ActivityMapping[]>([
-    { label: 'Atividade 1 (Av)', column: '' },
-    { label: 'Atividade 1 (Rec)', column: '' },
-    { label: 'Atividade 2 (Av)', column: '' },
-    { label: 'Atividade 2 (Rec)', column: '' },
-    { label: 'Atividade 3 (Av)', column: '' },
-    { label: 'Atividade 3 (Rec)', column: '' },
+    { label: 'Atividade 1 (Av)', column: 'none' },
+    { label: 'Atividade 1 (Rec)', column: 'none' },
+    { label: 'Atividade 2 (Av)', column: 'none' },
+    { label: 'Atividade 2 (Rec)', column: 'none' },
+    { label: 'Atividade 3 (Av)', column: 'none' },
+    { label: 'Atividade 3 (Rec)', column: 'none' },
   ]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,7 +74,7 @@ const Index = () => {
 
     const scriptData = data.map(row => {
       const name = String(row[studentNameCol] || '').trim().toUpperCase();
-      const grades = activities.map(act => row[act.column] !== undefined ? row[act.column] : null);
+      const grades = activities.map(act => (act.column !== 'none' && row[act.column] !== undefined) ? row[act.column] : null);
       return { name, grades };
     });
 
@@ -171,7 +171,7 @@ const Index = () => {
                           <SelectValue placeholder="Ignorar" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">(Ignorar)</SelectItem>
+                          <SelectItem value="none">(Ignorar)</SelectItem>
                           {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                         </SelectContent>
                       </Select>
@@ -198,7 +198,7 @@ const Index = () => {
                       <TableHeader className="bg-slate-50 sticky top-0">
                         <TableRow>
                           <TableHead className="font-bold">Aluno</TableHead>
-                          {activities.filter(a => a.column).map((a, i) => (
+                          {activities.filter(a => a.column !== 'none').map((a, i) => (
                             <TableHead key={i} className="text-center font-bold">{a.label}</TableHead>
                           ))}
                         </TableRow>
@@ -207,7 +207,7 @@ const Index = () => {
                         {data.slice(0, 20).map((row, i) => (
                           <TableRow key={i}>
                             <TableCell className="font-medium">{row[studentNameCol] || '-'}</TableCell>
-                            {activities.filter(a => a.column).map((a, j) => (
+                            {activities.filter(a => a.column !== 'none').map((a, j) => (
                               <TableCell key={j} className="text-center">{row[a.column] ?? '-'}</TableCell>
                             ))}
                           </TableRow>
