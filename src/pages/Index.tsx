@@ -57,33 +57,35 @@ const Index = () => {
         const newWorkbookData: WorkbookData = {};
         workbook.SheetNames.forEach(name => {
           const worksheet = workbook.Sheets[name];
-          // Lemos como matriz para encontrar o cabeçalho real
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          // Lemos como matriz (array de arrays) para análise bruta
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
           
-          // Encontra a linha que contém as áreas (CH, CN, etc)
+          // 1. Encontrar a linha do cabeçalho (que contém CH, CN, LI ou MT)
           let headerRowIndex = rows.findIndex(row => 
-            row.some(cell => typeof cell === 'string' && ['CH', 'CN', 'LI', 'MT'].includes(cell.trim().toUpperCase()))
+            row.some(cell => {
+              const val = String(cell).trim().toUpperCase();
+              return ['CH', 'CN', 'LI', 'MT'].includes(val);
+            })
           );
 
+          // Se não achar, assume a primeira linha
           if (headerRowIndex === -1) headerRowIndex = 0;
 
           const headers = rows[headerRowIndex].map(h => String(h || '').trim());
           const dataRows = rows.slice(headerRowIndex + 1);
 
+          // 2. Formatar os dados usando os cabeçalhos encontrados
           const formattedData = dataRows.map(row => {
             const obj: any = {};
             headers.forEach((header, i) => {
               if (header) obj[header] = row[i];
+              else obj[`col_${i}`] = row[i]; // Fallback para colunas sem nome
             });
             return obj;
           }).filter(row => {
-            // Filtra linhas que não são de alunos (títulos, vazias, etc)
-            const name = String(Object.values(row)[0] || '').toUpperCase();
-            return name && 
-                   !name.includes('MONITORAMENTO') && 
-                   !name.includes('SÉRIE') && 
-                   !name.includes('ALUNO') &&
-                   name.length > 3;
+            // Filtro básico: a primeira coluna (geralmente nome) deve ter conteúdo
+            const firstVal = String(Object.values(row)[0] || '').trim();
+            return firstVal.length > 2 && !firstVal.includes('TOTAL') && !firstVal.includes('MÉDIA');
           });
 
           newWorkbookData[name] = formattedData;
@@ -99,6 +101,7 @@ const Index = () => {
           showSuccess(`${workbook.SheetNames.length} turmas carregadas!`);
         }
       } catch (err) {
+        console.error(err);
         showError("Erro ao processar Excel.");
       }
     };
@@ -108,10 +111,13 @@ const Index = () => {
   const detectStudentColumn = (data: any[]) => {
     if (!data || data.length === 0) return;
     const cols = Object.keys(data[0]);
+    
+    // Tenta achar a coluna que parece conter nomes (texto longo com espaços)
     const detected = cols.find(col => {
       const val = String(data[0][col] || '');
-      return val.includes(' ') && !/\d/.test(val);
+      return val.includes(' ') && !/\d/.test(val) && val.length > 5;
     }) || cols[0];
+
     setStudentNameCol(detected);
   };
 
