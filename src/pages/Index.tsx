@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, Filter, GraduationCap, BookOpen, CheckCircle2 } from "lucide-react";
+import { FileSpreadsheet, ClipboardCopy, Filter, GraduationCap, Settings2, CheckCircle2, Layers } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
@@ -15,23 +15,38 @@ interface StudentData {
 }
 
 const AREAS = [
-  { id: 'CH', name: 'Ciências Humanas', av: 'CH', rec: 'RCH' },
-  { id: 'CN', name: 'Ciências da Natureza', av: 'CN', rec: 'RCN' },
-  { id: 'LI', name: 'Linguagens', av: 'LI', rec: 'RLI' },
-  { id: 'MT', name: 'Matemática', av: 'MT', rec: 'RMT' },
+  { id: 'CH', name: 'Ciências Humanas' },
+  { id: 'CN', name: 'Ciências da Natureza' },
+  { id: 'LI', name: 'Linguagens' },
+  { id: 'MT', name: 'Matemática' },
+];
+
+const CATEGORIES = [
+  { id: 'all', name: 'Todas as Categorias' },
+  { id: '0', name: 'Atividade Discursiva' },
+  { id: '1', name: 'Prova Interdisciplinar' },
+  { id: '2', name: 'Produção Escrita' },
+];
+
+const FIELDS = [
+  { id: 'both', name: 'Avaliação e Recuperação' },
+  { id: 'av', name: 'Apenas Avaliação (Av)' },
+  { id: 'rec', name: 'Apenas Recuperação (Rec)' },
 ];
 
 const Index = () => {
   const [data, setData] = useState<StudentData[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   
-  // Configurações de Colunas
+  // Configuração Base da Planilha
   const [studentNameCol, setStudentNameCol] = useState<string>('');
   const [turmaCol, setTurmaCol] = useState<string>('');
   
-  // Filtros Ativos
-  const [selectedTurma, setSelectedTurma] = useState<string>('all');
+  // Filtros e Mapeamento (Ordem solicitada)
+  const [selectedTurma, setSelectedTurma] = useState<string>('');
   const [selectedArea, setSelectedArea] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedField, setSelectedField] = useState<string>('both');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,16 +66,15 @@ const Index = () => {
           setColumns(cols);
           setData(jsonData);
           
-          // Tenta pré-selecionar colunas comuns
           const nameCol = cols.find(c => c.toLowerCase().includes('nome') || c.toLowerCase().includes('aluno'));
           const tCol = cols.find(c => c.toLowerCase().includes('turma'));
           if (nameCol) setStudentNameCol(nameCol);
           if (tCol) setTurmaCol(tCol);
           
-          showSuccess("Planilha carregada com sucesso!");
+          showSuccess("Planilha carregada!");
         }
       } catch (err) {
-        showError("Erro ao ler o arquivo Excel.");
+        showError("Erro ao ler Excel.");
       }
     };
     reader.readAsBinaryString(file);
@@ -73,40 +87,30 @@ const Index = () => {
   }, [data, turmaCol]);
 
   const filteredData = useMemo(() => {
-    let result = data;
-    if (selectedTurma !== 'all' && turmaCol) {
-      result = result.filter(item => String(item[turmaCol]) === selectedTurma);
-    }
-    return result;
+    if (!selectedTurma || selectedTurma === 'all') return data;
+    return data.filter(item => String(item[turmaCol]) === selectedTurma);
   }, [data, selectedTurma, turmaCol]);
 
   const generateScript = () => {
-    if (!studentNameCol) return showError("Selecione a coluna do Nome.");
-    if (!selectedArea) return showError("Selecione a Área de conhecimento.");
+    if (!selectedTurma) return showError("Selecione a Turma.");
+    if (!selectedArea) return showError("Selecione a Área.");
 
-    const areaInfo = AREAS.find(a => a.id === selectedArea);
-    if (!areaInfo) return;
+    const avCol = selectedArea;
+    const recCol = `R${selectedArea}`;
 
-    const scriptData = filteredData.map(row => {
-      const name = String(row[studentNameCol] || '').trim().toUpperCase();
-      const avGrade = row[areaInfo.av];
-      const recGrade = row[areaInfo.rec];
-      
-      // No SEGES são 3 categorias, cada uma com Av e Rec (total 6 campos por aluno)
-      // Repetimos a nota da área para as 3 categorias conforme solicitado
-      const grades = [
-        avGrade, recGrade, // Atividade Discursiva
-        avGrade, recGrade, // Prova Interdisciplinar
-        avGrade, recGrade  // Produção Escrita
-      ];
-      
-      return { name, grades };
-    });
+    const scriptData = filteredData.map(row => ({
+      name: String(row[studentNameCol] || '').trim().toUpperCase(),
+      av: row[avCol],
+      rec: row[recCol]
+    }));
 
     const script = `
 (function() {
   const studentsData = ${JSON.stringify(scriptData)};
-  console.log('Iniciando lançamento para área: ${areaInfo.name}');
+  const category = "${selectedCategory}";
+  const field = "${selectedField}";
+  
+  console.log('Iniciando lançamento...');
   let count = 0;
 
   studentsData.forEach(student => {
@@ -116,84 +120,93 @@ const Index = () => {
 
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
-      student.grades.forEach((grade, idx) => {
-        if (grade !== undefined && grade !== null && inputs[idx]) {
-          inputs[idx].value = grade.toString().replace('.', ',');
+      
+      // Mapeamento de índices no SEGES:
+      // Cat 0 (Discursiva): 0 (Av), 1 (Rec)
+      // Cat 1 (Interdisciplinar): 2 (Av), 3 (Rec)
+      // Cat 2 (Produção): 4 (Av), 5 (Rec)
+      
+      const targetIndices = [];
+      if (category === 'all') {
+        targetIndices.push(0, 1, 2, 3, 4, 5);
+      } else {
+        const base = parseInt(category) * 2;
+        targetIndices.push(base, base + 1);
+      }
+
+      targetIndices.forEach(idx => {
+        const isAv = idx % 2 === 0;
+        const val = isAv ? student.av : student.rec;
+        
+        // Filtra pelo campo selecionado (Av, Rec ou Ambos)
+        if (field === 'av' && !isAv) return;
+        if (field === 'rec' && isAv) return;
+
+        if (val !== undefined && val !== null && inputs[idx]) {
+          inputs[idx].value = val.toString().replace('.', ',');
           ['input', 'change', 'blur'].forEach(type => 
             inputs[idx].dispatchEvent(new Event(type, { bubbles: true }))
           );
         }
       });
+
       count++;
       row.style.backgroundColor = '#f0fdf4';
-      row.style.borderLeft = '4px solid #22c55e';
     }
   });
 
-  alert('Sucesso! ' + count + ' alunos da turma "${selectedTurma}" foram atualizados.');
+  alert('Sucesso! ' + count + ' alunos atualizados.');
 })();
     `;
 
     navigator.clipboard.writeText(script);
-    showSuccess("Script de lançamento copiado!");
+    showSuccess("Script copiado!");
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+      <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header Minimalista */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+        <header className="flex items-center justify-between bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-100">
               <GraduationCap className="text-white w-8 h-8" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Lançador SEGES</h1>
-              <p className="text-slate-500 text-sm">Filtre por turma e área para automatizar o diário</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lançador SEGES</h1>
+              <p className="text-slate-500 text-sm">Configuração inteligente de diário</p>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <Input 
-              type="file" 
-              accept=".xlsx,.xls" 
-              onChange={handleFileUpload}
-              className="max-w-[250px] cursor-pointer file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-            />
-          </div>
+          <Input 
+            type="file" 
+            accept=".xlsx,.xls" 
+            onChange={handleFileUpload}
+            className="max-w-[220px] text-xs"
+          />
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* Painel de Controle */}
-          <div className="lg:col-span-4 space-y-6">
-            
-            {/* Configuração de Colunas */}
-            <Card className="border-none shadow-sm overflow-hidden">
-              <CardHeader className="bg-slate-50/50 border-b border-slate-100">
-                <CardTitle className="text-sm font-bold flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-indigo-500" />
-                  1. Configurar Planilha
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-slate-500 uppercase">Coluna da Turma</Label>
-                  <Select value={turmaCol} onValueChange={setTurmaCol}>
-                    <SelectTrigger className="bg-slate-50 border-none">
-                      <SelectValue placeholder="Selecione a coluna..." />
+          {/* Configuração da Planilha (Passo 0) */}
+          <div className="lg:col-span-12">
+            <Card className="border-none shadow-sm">
+              <CardContent className="p-4 flex flex-wrap gap-6 items-end">
+                <div className="flex-1 min-w-[200px] space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-slate-400">Coluna do Nome</Label>
+                  <Select value={studentNameCol} onValueChange={setStudentNameCol}>
+                    <SelectTrigger className="bg-slate-50 border-none h-10">
+                      <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
                       {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-slate-500 uppercase">Coluna do Nome</Label>
-                  <Select value={studentNameCol} onValueChange={setStudentNameCol}>
-                    <SelectTrigger className="bg-slate-50 border-none">
-                      <SelectValue placeholder="Selecione a coluna..." />
+                <div className="flex-1 min-w-[200px] space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-slate-400">Coluna da Turma</Label>
+                  <Select value={turmaCol} onValueChange={setTurmaCol}>
+                    <SelectTrigger className="bg-slate-50 border-none h-10">
+                      <SelectValue placeholder="Selecione..." />
                     </SelectTrigger>
                     <SelectContent>
                       {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
@@ -202,40 +215,50 @@ const Index = () => {
                 </div>
               </CardContent>
             </Card>
+          </div>
 
-            {/* Filtros de Lançamento */}
+          {/* Filtros de Lançamento (Ordem Solicitada) */}
+          <div className="lg:col-span-4 space-y-6">
             <Card className="border-none shadow-sm overflow-hidden">
-              <CardHeader className="bg-slate-50/50 border-b border-slate-100">
+              <CardHeader className="bg-indigo-600 text-white">
                 <CardTitle className="text-sm font-bold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  2. Selecionar Alvo
+                  <Settings2 className="w-4 h-4" />
+                  Configurar Lançamento
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-5 space-y-4">
+              <CardContent className="p-5 space-y-5">
+                
+                {/* 1. Turma (Obrigatório) */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-slate-500 uppercase">Filtrar Turma</Label>
-                  <Select value={selectedTurma} onValueChange={setSelectedTurma} disabled={!turmaCol}>
-                    <SelectTrigger className="bg-slate-50 border-none">
-                      <SelectValue placeholder="Todas as turmas" />
+                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">1</span>
+                    Turma (Obrigatório)
+                  </Label>
+                  <Select value={selectedTurma} onValueChange={setSelectedTurma}>
+                    <SelectTrigger className="bg-slate-50 border-slate-100">
+                      <SelectValue placeholder="Selecione a turma..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todas as turmas</SelectItem>
                       {uniqueTurmas.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
 
+                {/* 2. Área (Obrigatório) */}
                 <div className="space-y-2">
-                  <Label className="text-xs font-semibold text-slate-500 uppercase">Área de Conhecimento</Label>
+                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">2</span>
+                    Área (Obrigatório)
+                  </Label>
                   <div className="grid grid-cols-2 gap-2">
                     {AREAS.map(area => (
                       <button
                         key={area.id}
                         onClick={() => setSelectedArea(area.id)}
-                        className={`p-3 rounded-xl text-xs font-bold transition-all border-2 ${
+                        className={`p-2 rounded-lg text-[10px] font-bold transition-all border-2 ${
                           selectedArea === area.id 
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
-                          : 'bg-white border-slate-100 text-slate-600 hover:border-indigo-200'
+                          ? 'bg-indigo-600 border-indigo-600 text-white' 
+                          : 'bg-white border-slate-100 text-slate-500 hover:border-indigo-200'
                         }`}
                       >
                         {area.id}
@@ -244,13 +267,45 @@ const Index = () => {
                   </div>
                 </div>
 
+                {/* 3. Tipo de Avaliação (Opcional) */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-[10px]">3</span>
+                    Tipo de Avaliação (Opcional)
+                  </Label>
+                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                    <SelectTrigger className="bg-slate-50 border-slate-100">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORIES.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* 4. Campo (Opcional) */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-[10px]">4</span>
+                    Campo de Nota (Opcional)
+                  </Label>
+                  <Select value={selectedField} onValueChange={setSelectedField}>
+                    <SelectTrigger className="bg-slate-50 border-slate-100">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FIELDS.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <Button 
                   onClick={generateScript} 
-                  disabled={!selectedArea || filteredData.length === 0}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 text-md font-bold rounded-2xl shadow-lg shadow-indigo-100 mt-2"
+                  disabled={!selectedTurma || !selectedArea}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 text-md font-bold rounded-2xl shadow-lg shadow-indigo-100 mt-4"
                 >
                   <ClipboardCopy className="w-5 h-5 mr-2" />
-                  Copiar Script de Lançamento
+                  Copiar Script
                 </Button>
               </CardContent>
             </Card>
@@ -261,19 +316,24 @@ const Index = () => {
             <Card className="border-none shadow-sm h-full min-h-[500px] overflow-hidden">
               <CardHeader className="border-b border-slate-100 flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle className="text-lg">Visualização da Turma</CardTitle>
+                  <CardTitle className="text-lg">Visualização do Lançamento</CardTitle>
                   <CardDescription>
-                    {selectedTurma === 'all' ? 'Mostrando todos os alunos' : `Turma: ${selectedTurma}`}
+                    {selectedTurma ? `Turma: ${selectedTurma}` : 'Selecione uma turma para visualizar'}
                   </CardDescription>
                 </div>
                 {selectedArea && (
-                  <div className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-wider border border-green-100">
-                    Mapeado: {selectedArea} & {AREAS.find(a => a.id === selectedArea)?.rec}
+                  <div className="flex gap-2">
+                    <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold border border-indigo-100">
+                      Av: {selectedArea}
+                    </div>
+                    <div className="px-3 py-1 bg-orange-50 text-orange-700 rounded-full text-[10px] font-bold border border-orange-100">
+                      Rec: R{selectedArea}
+                    </div>
                   </div>
                 )}
               </CardHeader>
               <CardContent className="p-0">
-                {filteredData.length > 0 ? (
+                {filteredData.length > 0 && selectedTurma ? (
                   <div className="overflow-auto max-h-[600px]">
                     <Table>
                       <TableHeader className="bg-slate-50/50 sticky top-0 z-10">
@@ -281,24 +341,22 @@ const Index = () => {
                           <TableHead className="font-bold text-slate-700">Aluno</TableHead>
                           {selectedArea && (
                             <>
-                              <TableHead className="text-center font-bold text-indigo-600">Av ({selectedArea})</TableHead>
-                              <TableHead className="text-center font-bold text-orange-600">Rec ({AREAS.find(a => a.id === selectedArea)?.rec})</TableHead>
+                              <TableHead className="text-center font-bold text-indigo-600">Nota ({selectedArea})</TableHead>
+                              <TableHead className="text-center font-bold text-orange-600">Rec (R{selectedArea})</TableHead>
                             </>
                           )}
-                          {turmaCol && <TableHead className="text-right font-bold text-slate-400">Turma</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredData.map((row, i) => (
                           <TableRow key={i} className="hover:bg-slate-50/50 transition-colors">
-                            <TableCell className="font-medium text-slate-900">{row[studentNameCol] || '-'}</TableCell>
+                            <TableCell className="font-medium text-slate-900 text-xs">{row[studentNameCol] || '-'}</TableCell>
                             {selectedArea && (
                               <>
-                                <TableCell className="text-center font-bold text-indigo-600">{row[AREAS.find(a => a.id === selectedArea)!.av] ?? '-'}</TableCell>
-                                <TableCell className="text-center font-bold text-orange-600">{row[AREAS.find(a => a.id === selectedArea)!.rec] ?? '-'}</TableCell>
+                                <TableCell className="text-center font-bold text-indigo-600 text-xs">{row[selectedArea] ?? '-'}</TableCell>
+                                <TableCell className="text-center font-bold text-orange-600 text-xs">{row[`R${selectedArea}`] ?? '-'}</TableCell>
                               </>
                             )}
-                            {turmaCol && <TableCell className="text-right text-slate-400 text-xs">{row[turmaCol]}</TableCell>}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -306,8 +364,8 @@ const Index = () => {
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[500px] text-slate-400">
-                    <FileSpreadsheet className="w-16 h-16 mb-4 opacity-10" />
-                    <p className="text-sm">Carregue uma planilha para começar</p>
+                    <Layers className="w-16 h-16 mb-4 opacity-10" />
+                    <p className="text-sm">Selecione a turma e a área para visualizar os dados</p>
                   </div>
                 )}
               </CardContent>
