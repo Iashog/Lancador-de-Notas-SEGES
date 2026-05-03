@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, CheckCircle2, AlertCircle, Info } from "lucide-react";
+import { FileSpreadsheet, ClipboardCopy, CheckCircle2, AlertCircle, Info, BookOpen } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
@@ -16,6 +16,7 @@ interface StudentData {
 
 interface ActivityMapping {
   label: string;
+  category: string;
   column: string;
 }
 
@@ -23,13 +24,15 @@ const Index = () => {
   const [data, setData] = useState<StudentData[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [studentNameCol, setStudentNameCol] = useState<string>('');
+  
+  // Mapeamento baseado nas 3 categorias do SEGES
   const [activities, setActivities] = useState<ActivityMapping[]>([
-    { label: 'Atividade 1 (Av)', column: 'none' },
-    { label: 'Atividade 1 (Rec)', column: 'none' },
-    { label: 'Atividade 2 (Av)', column: 'none' },
-    { label: 'Atividade 2 (Rec)', column: 'none' },
-    { label: 'Atividade 3 (Av)', column: 'none' },
-    { label: 'Atividade 3 (Rec)', column: 'none' },
+    { category: 'ATIVIDADE DISCURSIVA', label: 'Avaliação (Av)', column: 'none' },
+    { category: 'ATIVIDADE DISCURSIVA', label: 'Recuperação (Rec)', column: 'none' },
+    { category: 'PROVA INTERDISCIPLINAR', label: 'Avaliação (Av)', column: 'none' },
+    { category: 'PROVA INTERDISCIPLINAR', label: 'Recuperação (Rec)', column: 'none' },
+    { category: 'PRODUÇÃO ESCRITA', label: 'Avaliação (Av)', column: 'none' },
+    { category: 'PRODUÇÃO ESCRITA', label: 'Recuperação (Rec)', column: 'none' },
   ]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -121,12 +124,29 @@ const Index = () => {
           </div>
           <div className="space-y-2">
             <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Lançador de Notas SEGES</h1>
-            <p className="text-slate-500 text-lg">Automatize o preenchimento de diários eletrônicos</p>
+            <p className="text-slate-500 text-lg">Automatize o preenchimento das 3 categorias de avaliação</p>
           </div>
         </header>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 space-y-6">
+            {/* Legenda de Áreas */}
+            <Card className="border-none shadow-sm bg-indigo-50">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-900">
+                  <BookOpen className="w-4 h-4" />
+                  Legenda de Áreas (Excel)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-2 gap-2 text-[10px] text-indigo-800 font-medium">
+                <div>CH: C. Humanas</div>
+                <div>CN: C. Natureza</div>
+                <div>LI: Linguagens</div>
+                <div>MT: Matemática</div>
+                <div className="col-span-2 italic opacity-70 mt-1">* R = Recuperação (ex: RCH)</div>
+              </CardContent>
+            </Card>
+
             <Card className="border-none shadow-sm">
               <CardHeader>
                 <CardTitle className="text-xl flex items-center gap-2">
@@ -159,24 +179,34 @@ const Index = () => {
             {columns.length > 0 && (
               <Card className="border-none shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-xl">2. Mapeamento</CardTitle>
-                  <CardDescription>Vincule as colunas às atividades</CardDescription>
+                  <CardTitle className="text-xl">2. Mapeamento SEGES</CardTitle>
+                  <CardDescription>Vincule as colunas do Excel às categorias do diário</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {activities.map((act, i) => (
-                    <div key={i} className="space-y-1">
-                      <Label className="text-xs text-slate-500 uppercase font-bold">{act.label}</Label>
-                      <Select value={act.column} onValueChange={(v) => updateActivityMapping(i, v)}>
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Ignorar" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">(Ignorar)</SelectItem>
-                          {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
+                <CardContent className="space-y-6">
+                  {/* Agrupamento por Categoria */}
+                  {['ATIVIDADE DISCURSIVA', 'PROVA INTERDISCIPLINAR', 'PRODUÇÃO ESCRITA'].map((cat) => (
+                    <div key={cat} className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat}</h3>
+                      {activities.filter(a => a.category === cat).map((act, i) => {
+                        const globalIdx = activities.findIndex(ga => ga.label === act.label && ga.category === act.category);
+                        return (
+                          <div key={i} className="space-y-1">
+                            <Label className="text-xs font-bold text-slate-600">{act.label}</Label>
+                            <Select value={act.column} onValueChange={(v) => updateActivityMapping(globalIdx, v)}>
+                              <SelectTrigger className="h-9 bg-white">
+                                <SelectValue placeholder="Ignorar" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">(Ignorar)</SelectItem>
+                                {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
+                  
                   <Button onClick={generateScript} className="w-full bg-indigo-600 hover:bg-indigo-700 mt-4 py-6 text-lg rounded-2xl shadow-lg shadow-indigo-100">
                     <ClipboardCopy className="w-5 h-5 mr-2" />
                     Copiar Script
@@ -199,16 +229,18 @@ const Index = () => {
                         <TableRow>
                           <TableHead className="font-bold">Aluno</TableHead>
                           {activities.filter(a => a.column !== 'none').map((a, i) => (
-                            <TableHead key={i} className="text-center font-bold">{a.label}</TableHead>
+                            <TableHead key={i} className="text-center font-bold text-[10px] leading-tight">
+                              {a.category.split(' ')[0]}<br/>{a.label}
+                            </TableHead>
                           ))}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {data.slice(0, 20).map((row, i) => (
                           <TableRow key={i}>
-                            <TableCell className="font-medium">{row[studentNameCol] || '-'}</TableCell>
+                            <TableCell className="font-medium text-xs">{row[studentNameCol] || '-'}</TableCell>
                             {activities.filter(a => a.column !== 'none').map((a, j) => (
-                              <TableCell key={j} className="text-center">{row[a.column] ?? '-'}</TableCell>
+                              <TableCell key={j} className="text-center text-xs">{row[a.column] ?? '-'}</TableCell>
                             ))}
                           </TableRow>
                         ))}
