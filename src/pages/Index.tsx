@@ -57,36 +57,48 @@ const Index = () => {
         const newWorkbookData: WorkbookData = {};
         workbook.SheetNames.forEach(name => {
           const worksheet = workbook.Sheets[name];
-          // Lemos como matriz (array de arrays) para análise bruta
           const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
           
-          // 1. Encontrar a linha do cabeçalho (que contém CH, CN, LI ou MT)
-          let headerRowIndex = rows.findIndex(row => 
-            row.some(cell => {
-              const val = String(cell).trim().toUpperCase();
-              return ['CH', 'CN', 'LI', 'MT'].includes(val);
-            })
+          // 1. Encontrar a linha das Áreas (CH, CN...)
+          let areaRowIndex = rows.findIndex(row => 
+            row.some(cell => ['CH', 'CN', 'LI', 'MT'].includes(String(cell).trim().toUpperCase()))
           );
 
-          // Se não achar, assume a primeira linha
-          if (headerRowIndex === -1) headerRowIndex = 0;
+          if (areaRowIndex === -1) return;
 
-          const headers = rows[headerRowIndex].map(h => String(h || '').trim());
-          const dataRows = rows.slice(headerRowIndex + 1);
+          // 2. Processar cabeçalhos com "Fill Forward" para células mescladas
+          const rawAreas = rows[areaRowIndex].map(h => String(h || '').trim().toUpperCase());
+          const processedHeaders: string[] = [];
+          let lastArea = "";
 
-          // 2. Formatar os dados usando os cabeçalhos encontrados
-          const formattedData = dataRows.map(row => {
-            const obj: any = {};
-            headers.forEach((header, i) => {
-              if (header) obj[header] = row[i];
-              else obj[`col_${i}`] = row[i]; // Fallback para colunas sem nome
-            });
-            return obj;
-          }).filter(row => {
-            // Filtro básico: a primeira coluna (geralmente nome) deve ter conteúdo
-            const firstVal = String(Object.values(row)[0] || '').trim();
-            return firstVal.length > 2 && !firstVal.includes('TOTAL') && !firstVal.includes('MÉDIA');
+          rawAreas.forEach((area, i) => {
+            if (['CH', 'CN', 'LI', 'MT'].includes(area)) {
+              lastArea = area;
+            }
+            // Se a coluna começa com R (Recuperação), ex: RCH
+            if (area.startsWith('R') && ['RCH', 'RCN', 'RLI', 'RMT'].includes(area)) {
+                processedHeaders.push(area);
+            } else {
+                processedHeaders.push(lastArea || `COL_${i}`);
+            }
           });
+
+          // 3. Mapear dados
+          const dataRows = rows.slice(areaRowIndex + 1);
+          const formattedData = dataRows.map(row => {
+            const studentObj: any = { _raw: row };
+            
+            // Agrupar notas por área para suportar múltiplas categorias
+            AREAS.forEach(area => {
+                studentObj[area.id] = row.filter((_, i) => processedHeaders[i] === area.id);
+                studentObj[`R${area.id}`] = row.filter((_, i) => processedHeaders[i] === `R${area.id}`);
+            });
+
+            // Detectar nome do aluno (primeira coluna com texto longo)
+            studentObj._name = String(row.find(cell => String(cell).length > 5 && !/\d/.test(String(cell))) || "");
+            
+            return studentObj;
+          }).filter(row => row._name.length > 3 && !row._name.includes("TOTAL") && !row._name.includes("MÉDIA"));
 
           newWorkbookData[name] = formattedData;
         });
@@ -95,30 +107,14 @@ const Index = () => {
         setSheetNames(workbook.SheetNames);
         
         if (workbook.SheetNames.length > 0) {
-          const firstSheet = workbook.SheetNames[0];
-          setSelectedTurma(firstSheet);
-          detectStudentColumn(newWorkbookData[firstSheet]);
-          showSuccess(`${workbook.SheetNames.length} turmas carregadas!`);
+          setSelectedTurma(workbook.SheetNames[0]);
+          showSuccess("Planilha processada com sucesso!");
         }
       } catch (err) {
-        console.error(err);
         showError("Erro ao processar Excel.");
       }
     };
     reader.readAsArrayBuffer(file);
-  };
-
-  const detectStudentColumn = (data: any[]) => {
-    if (!data || data.length === 0) return;
-    const cols = Object.keys(data[0]);
-    
-    // Tenta achar a coluna que parece conter nomes (texto longo com espaços)
-    const detected = cols.find(col => {
-      const val = String(data[0][col] || '');
-      return val.includes(' ') && !/\d/.test(val) && val.length > 5;
-    }) || cols[0];
-
-    setStudentNameCol(detected);
   };
 
   const filteredData = useMemo(() => {
@@ -129,11 +125,16 @@ const Index = () => {
     if (!selectedTurma) return showError("Selecione a Turma.");
     if (!selectedArea) return showError("Selecione a Área.");
 
-    const scriptData = filteredData.map(row => ({
-      name: String(row[studentNameCol] || '').trim().toUpperCase(),
-      av: row[selectedArea],
-      rec: row[`R${selectedArea}`]
-    }));
+    const scriptData = filteredData.map(row => {
+      const areaNotes = row[selectedArea] || [];
+      const recNotes = row[`R${selectedArea}`] || [];
+      
+      return {
+        name: row._name.trim().toUpperCase(),
+        notes: areaNotes,
+        recs: recNotes
+      };
+    });
 
     const script = `
 (function() {
@@ -149,14 +150,18 @@ const Index = () => {
 
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
+      // No SEGES: [Cat0_Av, Cat0_Rec, Cat1_Av, Cat1_Rec, Cat2_Av, Cat2_Rec]
       const targetIndices = category === 'all' ? [0, 1, 2, 3, 4, 5] : [parseInt(category)*2, parseInt(category)*2 + 1];
 
       targetIndices.forEach(idx => {
+        const catIdx = Math.floor(idx / 2);
         const isAv = idx % 2 === 0;
-        const val = isAv ? student.av : student.rec;
+        
         if ((field === 'av' && !isAv) || (field === 'rec' && isAv)) return;
 
-        if (val !== undefined && val !== null && inputs[idx]) {
+        const val = isAv ? student.notes[catIdx] : student.recs[catIdx];
+
+        if (val !== undefined && val !== null && val !== "" && inputs[idx]) {
           inputs[idx].value = val.toString().replace('.', ',');
           ['input', 'change', 'blur'].forEach(t => inputs[idx].dispatchEvent(new Event(t, { bubbles: true })));
         }
@@ -216,10 +221,7 @@ const Index = () => {
                     <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">2</span>
                     Turma (Abas da Planilha)
                   </Label>
-                  <Select value={selectedTurma} onValueChange={(val) => {
-                    setSelectedTurma(val);
-                    detectStudentColumn(workbookData[val]);
-                  }} disabled={sheetNames.length === 0}>
+                  <Select value={selectedTurma} onValueChange={setSelectedTurma} disabled={sheetNames.length === 0}>
                     <SelectTrigger className="bg-slate-50 border-slate-100 h-11">
                       <SelectValue placeholder="Selecione a turma..." />
                     </SelectTrigger>
@@ -292,16 +294,6 @@ const Index = () => {
                     {selectedTurma ? `Turma: ${selectedTurma}` : 'Carregue uma planilha para começar'}
                   </CardDescription>
                 </div>
-                {selectedArea && (
-                  <div className="flex gap-2">
-                    <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold border border-indigo-100 uppercase">
-                      Av: {selectedArea}
-                    </div>
-                    <div className="px-3 py-1 bg-orange-50 text-orange-700 rounded-full text-[10px] font-bold border border-orange-100 uppercase">
-                      Rec: R{selectedArea}
-                    </div>
-                  </div>
-                )}
               </CardHeader>
               <CardContent className="p-0 flex-1 bg-white">
                 {filteredData.length > 0 ? (
@@ -312,8 +304,8 @@ const Index = () => {
                           <TableHead className="font-bold text-slate-700 pl-6">Aluno</TableHead>
                           {selectedArea && (
                             <>
-                              <TableHead className="text-center font-bold text-indigo-600">Nota ({selectedArea})</TableHead>
-                              <TableHead className="text-center font-bold text-orange-600">Rec (R{selectedArea})</TableHead>
+                              <TableHead className="text-center font-bold text-indigo-600">Notas ({selectedArea})</TableHead>
+                              <TableHead className="text-center font-bold text-orange-600">Recs (R{selectedArea})</TableHead>
                             </>
                           )}
                         </TableRow>
@@ -321,11 +313,15 @@ const Index = () => {
                       <TableBody>
                         {filteredData.map((row, i) => (
                           <TableRow key={i} className="hover:bg-slate-50/50 transition-colors">
-                            <TableCell className="font-medium text-slate-900 text-xs pl-6">{row[studentNameCol] || '-'}</TableCell>
+                            <TableCell className="font-medium text-slate-900 text-xs pl-6">{row._name || '-'}</TableCell>
                             {selectedArea && (
                               <>
-                                <TableCell className="text-center font-bold text-indigo-600 text-xs">{row[selectedArea] ?? '-'}</TableCell>
-                                <TableCell className="text-center font-bold text-orange-600 text-xs">{row[`R${selectedArea}`] ?? '-'}</TableCell>
+                                <TableCell className="text-center font-bold text-indigo-600 text-xs">
+                                    {row[selectedArea]?.join(' | ') || '-'}
+                                </TableCell>
+                                <TableCell className="text-center font-bold text-orange-600 text-xs">
+                                    {row[`R${selectedArea}`]?.join(' | ') || '-'}
+                                </TableCell>
                               </>
                             )}
                           </TableRow>
