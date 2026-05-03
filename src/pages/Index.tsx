@@ -57,16 +57,46 @@ const Index = () => {
         const newWorkbookData: WorkbookData = {};
         workbook.SheetNames.forEach(name => {
           const worksheet = workbook.Sheets[name];
-          newWorkbookData[name] = XLSX.utils.sheet_to_json(worksheet);
+          // Lemos como matriz para encontrar o cabeçalho real
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          
+          // Encontra a linha que contém as áreas (CH, CN, etc)
+          let headerRowIndex = rows.findIndex(row => 
+            row.some(cell => typeof cell === 'string' && ['CH', 'CN', 'LI', 'MT'].includes(cell.trim().toUpperCase()))
+          );
+
+          if (headerRowIndex === -1) headerRowIndex = 0;
+
+          const headers = rows[headerRowIndex].map(h => String(h || '').trim());
+          const dataRows = rows.slice(headerRowIndex + 1);
+
+          const formattedData = dataRows.map(row => {
+            const obj: any = {};
+            headers.forEach((header, i) => {
+              if (header) obj[header] = row[i];
+            });
+            return obj;
+          }).filter(row => {
+            // Filtra linhas que não são de alunos (títulos, vazias, etc)
+            const name = String(Object.values(row)[0] || '').toUpperCase();
+            return name && 
+                   !name.includes('MONITORAMENTO') && 
+                   !name.includes('SÉRIE') && 
+                   !name.includes('ALUNO') &&
+                   name.length > 3;
+          });
+
+          newWorkbookData[name] = formattedData;
         });
 
         setWorkbookData(newWorkbookData);
         setSheetNames(workbook.SheetNames);
         
         if (workbook.SheetNames.length > 0) {
-          setSelectedTurma(workbook.SheetNames[0]);
-          detectStudentColumn(newWorkbookData[workbook.SheetNames[0]]);
-          showSuccess(`${workbook.SheetNames.length} turmas (abas) carregadas!`);
+          const firstSheet = workbook.SheetNames[0];
+          setSelectedTurma(firstSheet);
+          detectStudentColumn(newWorkbookData[firstSheet]);
+          showSuccess(`${workbook.SheetNames.length} turmas carregadas!`);
         }
       } catch (err) {
         showError("Erro ao processar Excel.");
@@ -78,13 +108,10 @@ const Index = () => {
   const detectStudentColumn = (data: any[]) => {
     if (!data || data.length === 0) return;
     const cols = Object.keys(data[0]);
-    
-    // Procura por uma coluna que contenha nomes (strings com espaços)
     const detected = cols.find(col => {
       const val = String(data[0][col] || '');
       return val.includes(' ') && !/\d/.test(val);
-    }) || cols.find(c => /nome|aluno/i.test(c)) || cols[0];
-
+    }) || cols[0];
     setStudentNameCol(detected);
   };
 
@@ -143,10 +170,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
-        
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Coluna de Configuração */}
           <div className="lg:col-span-4 space-y-6">
             <Card className="border-none shadow-sm overflow-hidden">
               <CardHeader className="bg-indigo-600 text-white pb-8">
@@ -160,8 +184,6 @@ const Index = () => {
               </CardHeader>
               
               <CardContent className="p-5 space-y-6 -mt-6">
-                
-                {/* Passo 0: Upload */}
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
                   <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                     <FileSpreadsheet className="w-3 h-3" /> 1. Carregar Planilha
@@ -183,7 +205,6 @@ const Index = () => {
                   </div>
                 </div>
 
-                {/* Passo 1: Turma */}
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">2</span>
@@ -202,7 +223,6 @@ const Index = () => {
                   </Select>
                 </div>
 
-                {/* Passo 2: Área */}
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">3</span>
@@ -225,7 +245,6 @@ const Index = () => {
                   </div>
                 </div>
 
-                {/* Passo 3: Filtros Adicionais */}
                 <div className="grid grid-cols-1 gap-4 pt-2">
                   <div className="space-y-2">
                     <Label className="text-[10px] font-bold text-slate-400 uppercase">Categoria</Label>
@@ -258,7 +277,6 @@ const Index = () => {
             </Card>
           </div>
 
-          {/* Coluna de Visualização */}
           <div className="lg:col-span-8">
             <Card className="border-none shadow-sm h-full min-h-[600px] overflow-hidden flex flex-col">
               <CardHeader className="border-b border-slate-100 flex flex-row items-center justify-between bg-white">
