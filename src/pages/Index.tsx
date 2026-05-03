@@ -1,14 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, GraduationCap, Settings2, Layers, CheckCircle2 } from "lucide-react";
+import { FileSpreadsheet, ClipboardCopy, GraduationCap, Settings2, Layers, AlertCircle, ChevronDown } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface StudentData {
   [key: string]: any;
@@ -36,8 +37,10 @@ const FIELDS = [
 
 const Index = () => {
   const [data, setData] = useState<StudentData[]>([]);
+  const [allColumns, setAllColumns] = useState<string[]>([]);
   const [studentNameCol, setStudentNameCol] = useState<string>('');
   const [turmaCol, setTurmaCol] = useState<string>('');
+  const [showConfig, setShowConfig] = useState(false);
   
   // Filtros de Lançamento
   const [selectedTurma, setSelectedTurma] = useState<string>('');
@@ -52,41 +55,42 @@ const Index = () => {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const jsonData = XLSX.utils.sheet_to_json(ws) as any[];
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
         
         if (jsonData.length > 0) {
           const cols = Object.keys(jsonData[0]);
+          setAllColumns(cols);
           setData(jsonData);
           
-          // Identificação automática das colunas necessárias
-          const nameCol = cols.find(c => {
-            const low = c.toLowerCase();
-            return low.includes('nome') || low.includes('aluno') || low.includes('estudante');
-          });
-          const tCol = cols.find(c => {
-            const low = c.toLowerCase();
-            return low.includes('turma') || low.includes('classe');
-          });
+          // Detecção automática robusta
+          const nameCol = cols.find(c => /nome|aluno|estudante|student/i.test(c));
+          const tCol = cols.find(c => /turma|classe|class|group/i.test(c));
 
           if (nameCol) setStudentNameCol(nameCol);
           if (tCol) setTurmaCol(tCol);
           
-          showSuccess("Planilha carregada com sucesso!");
+          // Se não encontrar a turma, avisa o usuário para configurar manualmente
+          if (!tCol || !nameCol) {
+            setShowConfig(true);
+            showError("Não identificamos as colunas de Nome/Turma. Por favor, ajuste abaixo.");
+          } else {
+            showSuccess("Planilha carregada com sucesso!");
+          }
         }
       } catch (err) {
         showError("Erro ao processar o arquivo Excel.");
       }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const uniqueTurmas = useMemo(() => {
     if (!turmaCol || data.length === 0) return [];
-    const turmas = data.map(item => String(item[turmaCol] || 'Sem Turma')).filter(Boolean);
+    const turmas = data.map(item => String(item[turmaCol] || '')).filter(Boolean);
     return Array.from(new Set(turmas)).sort();
   }, [data, turmaCol]);
 
@@ -98,7 +102,7 @@ const Index = () => {
   const generateScript = () => {
     if (!selectedTurma) return showError("Selecione a Turma.");
     if (!selectedArea) return showError("Selecione a Área.");
-    if (!studentNameCol) return showError("Não foi possível identificar a coluna de nomes na planilha.");
+    if (!studentNameCol) return showError("Coluna de nomes não identificada.");
 
     const avCol = selectedArea;
     const recCol = `R${selectedArea}`;
@@ -160,7 +164,7 @@ const Index = () => {
     `;
 
     navigator.clipboard.writeText(script);
-    showSuccess("Script copiado para a área de transferência!");
+    showSuccess("Script copiado!");
   };
 
   return (
@@ -174,7 +178,7 @@ const Index = () => {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lançador SEGES</h1>
-              <p className="text-slate-500 text-sm">Automatização inteligente de diários escolares</p>
+              <p className="text-slate-500 text-sm">Automatização inteligente de diários</p>
             </div>
           </div>
           <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
@@ -183,10 +187,50 @@ const Index = () => {
               type="file" 
               accept=".xlsx,.xls" 
               onChange={handleFileUpload}
-              className="max-w-[200px] border-none bg-transparent text-xs shadow-none focus-visible:ring-0"
+              className="max-w-[200px] border-none bg-transparent text-xs shadow-none focus-visible:ring-0 cursor-pointer"
             />
           </div>
         </header>
+
+        {/* Configuração de Colunas (Oculta por padrão, só aparece se falhar ou se o usuário quiser) */}
+        <Collapsible open={showConfig} onOpenChange={setShowConfig} className="w-full">
+          <div className="flex justify-end mb-2">
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-[10px] text-slate-400 hover:text-indigo-600 uppercase font-bold tracking-widest">
+                {showConfig ? 'Ocultar Ajustes' : 'Ajustar Colunas da Planilha'}
+                <ChevronDown className={`ml-1 w-3 h-3 transition-transform ${showConfig ? 'rotate-180' : ''}`} />
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent>
+            <Card className="border-dashed border-2 border-slate-200 bg-slate-50/50 mb-6">
+              <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Coluna do Nome do Aluno</Label>
+                  <Select value={studentNameCol} onValueChange={setStudentNameCol}>
+                    <SelectTrigger className="bg-white h-9 text-xs">
+                      <SelectValue placeholder="Selecione a coluna..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Coluna da Turma</Label>
+                  <Select value={turmaCol} onValueChange={setTurmaCol}>
+                    <SelectTrigger className="bg-white h-9 text-xs">
+                      <SelectValue placeholder="Selecione a coluna..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+          </CollapsibleContent>
+        </Collapsible>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
@@ -215,6 +259,11 @@ const Index = () => {
                       {uniqueTurmas.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {data.length > 0 && uniqueTurmas.length === 0 && (
+                    <p className="text-[10px] text-red-500 flex items-center gap-1 mt-1">
+                      <AlertCircle className="w-3 h-3" /> Nenhuma turma encontrada. Ajuste as colunas acima.
+                    </p>
+                  )}
                 </div>
 
                 {/* 2. Área (Obrigatório) */}
