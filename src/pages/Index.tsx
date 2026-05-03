@@ -1,11 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, CheckCircle2, AlertCircle, Info, BookOpen } from "lucide-react";
+import { FileSpreadsheet, ClipboardCopy, Filter, GraduationCap, BookOpen, CheckCircle2 } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
@@ -14,26 +14,24 @@ interface StudentData {
   [key: string]: any;
 }
 
-interface ActivityMapping {
-  label: string;
-  category: string;
-  column: string;
-}
+const AREAS = [
+  { id: 'CH', name: 'Ciências Humanas', av: 'CH', rec: 'RCH' },
+  { id: 'CN', name: 'Ciências da Natureza', av: 'CN', rec: 'RCN' },
+  { id: 'LI', name: 'Linguagens', av: 'LI', rec: 'RLI' },
+  { id: 'MT', name: 'Matemática', av: 'MT', rec: 'RMT' },
+];
 
 const Index = () => {
   const [data, setData] = useState<StudentData[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
-  const [studentNameCol, setStudentNameCol] = useState<string>('');
   
-  // Mapeamento baseado nas 3 categorias do SEGES
-  const [activities, setActivities] = useState<ActivityMapping[]>([
-    { category: 'ATIVIDADE DISCURSIVA', label: 'Avaliação (Av)', column: 'none' },
-    { category: 'ATIVIDADE DISCURSIVA', label: 'Recuperação (Rec)', column: 'none' },
-    { category: 'PROVA INTERDISCIPLINAR', label: 'Avaliação (Av)', column: 'none' },
-    { category: 'PROVA INTERDISCIPLINAR', label: 'Recuperação (Rec)', column: 'none' },
-    { category: 'PRODUÇÃO ESCRITA', label: 'Avaliação (Av)', column: 'none' },
-    { category: 'PRODUÇÃO ESCRITA', label: 'Recuperação (Rec)', column: 'none' },
-  ]);
+  // Configurações de Colunas
+  const [studentNameCol, setStudentNameCol] = useState<string>('');
+  const [turmaCol, setTurmaCol] = useState<string>('');
+  
+  // Filtros Ativos
+  const [selectedTurma, setSelectedTurma] = useState<string>('all');
+  const [selectedArea, setSelectedArea] = useState<string>('');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -52,6 +50,13 @@ const Index = () => {
           const cols = Object.keys(jsonData[0]);
           setColumns(cols);
           setData(jsonData);
+          
+          // Tenta pré-selecionar colunas comuns
+          const nameCol = cols.find(c => c.toLowerCase().includes('nome') || c.toLowerCase().includes('aluno'));
+          const tCol = cols.find(c => c.toLowerCase().includes('turma'));
+          if (nameCol) setStudentNameCol(nameCol);
+          if (tCol) setTurmaCol(tCol);
+          
           showSuccess("Planilha carregada com sucesso!");
         }
       } catch (err) {
@@ -61,30 +66,47 @@ const Index = () => {
     reader.readAsBinaryString(file);
   };
 
-  const updateActivityMapping = (index: number, column: string) => {
-    setActivities(prev => {
-      const next = [...prev];
-      next[index] = { ...next[index], column };
-      return next;
-    });
-  };
+  const uniqueTurmas = useMemo(() => {
+    if (!turmaCol || data.length === 0) return [];
+    const turmas = data.map(item => String(item[turmaCol] || 'Sem Turma')).filter(Boolean);
+    return Array.from(new Set(turmas)).sort();
+  }, [data, turmaCol]);
 
-  const generateScript = useCallback(() => {
-    if (!studentNameCol) {
-      showError("Selecione a coluna com o nome dos alunos.");
-      return;
+  const filteredData = useMemo(() => {
+    let result = data;
+    if (selectedTurma !== 'all' && turmaCol) {
+      result = result.filter(item => String(item[turmaCol]) === selectedTurma);
     }
+    return result;
+  }, [data, selectedTurma, turmaCol]);
 
-    const scriptData = data.map(row => {
+  const generateScript = () => {
+    if (!studentNameCol) return showError("Selecione a coluna do Nome.");
+    if (!selectedArea) return showError("Selecione a Área de conhecimento.");
+
+    const areaInfo = AREAS.find(a => a.id === selectedArea);
+    if (!areaInfo) return;
+
+    const scriptData = filteredData.map(row => {
       const name = String(row[studentNameCol] || '').trim().toUpperCase();
-      const grades = activities.map(act => (act.column !== 'none' && row[act.column] !== undefined) ? row[act.column] : null);
+      const avGrade = row[areaInfo.av];
+      const recGrade = row[areaInfo.rec];
+      
+      // No SEGES são 3 categorias, cada uma com Av e Rec (total 6 campos por aluno)
+      // Repetimos a nota da área para as 3 categorias conforme solicitado
+      const grades = [
+        avGrade, recGrade, // Atividade Discursiva
+        avGrade, recGrade, // Prova Interdisciplinar
+        avGrade, recGrade  // Produção Escrita
+      ];
+      
       return { name, grades };
     });
 
     const script = `
 (function() {
   const studentsData = ${JSON.stringify(scriptData)};
-  console.log('Iniciando lançamento de notas...');
+  console.log('Iniciando lançamento para área: ${areaInfo.name}');
   let count = 0;
 
   studentsData.forEach(student => {
@@ -95,7 +117,7 @@ const Index = () => {
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
       student.grades.forEach((grade, idx) => {
-        if (grade !== null && inputs[idx]) {
+        if (grade !== undefined && grade !== null && inputs[idx]) {
           inputs[idx].value = grade.toString().replace('.', ',');
           ['input', 'change', 'blur'].forEach(type => 
             inputs[idx].dispatchEvent(new Event(type, { bubbles: true }))
@@ -103,145 +125,180 @@ const Index = () => {
         }
       });
       count++;
-      row.style.backgroundColor = '#e6fffa';
+      row.style.backgroundColor = '#f0fdf4';
+      row.style.borderLeft = '4px solid #22c55e';
     }
   });
 
-  alert('Processamento concluído! ' + count + ' alunos atualizados.');
+  alert('Sucesso! ' + count + ' alunos da turma "${selectedTurma}" foram atualizados.');
 })();
     `;
 
     navigator.clipboard.writeText(script);
-    showSuccess("Script copiado!");
-  }, [data, studentNameCol, activities]);
+    showSuccess("Script de lançamento copiado!");
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center p-4 bg-indigo-600 rounded-3xl shadow-xl shadow-indigo-100">
-            <FileSpreadsheet className="text-white w-10 h-10" />
+    <div className="min-h-screen bg-[#f8fafc] p-4 md:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        
+        {/* Header Minimalista */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-100">
+              <GraduationCap className="text-white w-8 h-8" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Lançador SEGES</h1>
+              <p className="text-slate-500 text-sm">Filtre por turma e área para automatizar o diário</p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Lançador de Notas SEGES</h1>
-            <p className="text-slate-500 text-lg">Automatize o preenchimento das 3 categorias de avaliação</p>
+          
+          <div className="flex items-center gap-2">
+            <Input 
+              type="file" 
+              accept=".xlsx,.xls" 
+              onChange={handleFileUpload}
+              className="max-w-[250px] cursor-pointer file:mr-4 file:py-1 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+            />
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Painel de Controle */}
           <div className="lg:col-span-4 space-y-6">
-            {/* Legenda de Áreas */}
-            <Card className="border-none shadow-sm bg-indigo-50">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-bold flex items-center gap-2 text-indigo-900">
-                  <BookOpen className="w-4 h-4" />
-                  Legenda de Áreas (Excel)
+            
+            {/* Configuração de Colunas */}
+            <Card className="border-none shadow-sm overflow-hidden">
+              <CardHeader className="bg-slate-50/50 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-indigo-500" />
+                  1. Configurar Planilha
                 </CardTitle>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-2 text-[10px] text-indigo-800 font-medium">
-                <div>CH: C. Humanas</div>
-                <div>CN: C. Natureza</div>
-                <div>LI: Linguagens</div>
-                <div>MT: Matemática</div>
-                <div className="col-span-2 italic opacity-70 mt-1">* R = Recuperação (ex: RCH)</div>
+              <CardContent className="p-5 space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-slate-500 uppercase">Coluna da Turma</Label>
+                  <Select value={turmaCol} onValueChange={setTurmaCol}>
+                    <SelectTrigger className="bg-slate-50 border-none">
+                      <SelectValue placeholder="Selecione a coluna..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-slate-500 uppercase">Coluna do Nome</Label>
+                  <Select value={studentNameCol} onValueChange={setStudentNameCol}>
+                    <SelectTrigger className="bg-slate-50 border-none">
+                      <SelectValue placeholder="Selecione a coluna..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardContent>
             </Card>
 
-            <Card className="border-none shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <Info className="w-5 h-5 text-indigo-500" />
-                  1. Importar Excel
+            {/* Filtros de Lançamento */}
+            <Card className="border-none shadow-sm overflow-hidden">
+              <CardHeader className="bg-slate-50/50 border-b border-slate-100">
+                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                  2. Selecionar Alvo
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="p-5 space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="file">Arquivo da Planilha</Label>
-                  <Input id="file" type="file" accept=".xlsx,.xls" onChange={handleFileUpload} />
+                  <Label className="text-xs font-semibold text-slate-500 uppercase">Filtrar Turma</Label>
+                  <Select value={selectedTurma} onValueChange={setSelectedTurma} disabled={!turmaCol}>
+                    <SelectTrigger className="bg-slate-50 border-none">
+                      <SelectValue placeholder="Todas as turmas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as turmas</SelectItem>
+                      {uniqueTurmas.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {columns.length > 0 && (
-                  <div className="space-y-2 pt-2">
-                    <Label>Coluna do Nome</Label>
-                    <Select value={studentNameCol} onValueChange={setStudentNameCol}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-slate-500 uppercase">Área de Conhecimento</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {AREAS.map(area => (
+                      <button
+                        key={area.id}
+                        onClick={() => setSelectedArea(area.id)}
+                        className={`p-3 rounded-xl text-xs font-bold transition-all border-2 ${
+                          selectedArea === area.id 
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
+                          : 'bg-white border-slate-100 text-slate-600 hover:border-indigo-200'
+                        }`}
+                      >
+                        {area.id}
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
+
+                <Button 
+                  onClick={generateScript} 
+                  disabled={!selectedArea || filteredData.length === 0}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 text-md font-bold rounded-2xl shadow-lg shadow-indigo-100 mt-2"
+                >
+                  <ClipboardCopy className="w-5 h-5 mr-2" />
+                  Copiar Script de Lançamento
+                </Button>
               </CardContent>
             </Card>
-
-            {columns.length > 0 && (
-              <Card className="border-none shadow-sm">
-                <CardHeader>
-                  <CardTitle className="text-xl">2. Mapeamento SEGES</CardTitle>
-                  <CardDescription>Vincule as colunas do Excel às categorias do diário</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Agrupamento por Categoria */}
-                  {['ATIVIDADE DISCURSIVA', 'PROVA INTERDISCIPLINAR', 'PRODUÇÃO ESCRITA'].map((cat) => (
-                    <div key={cat} className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{cat}</h3>
-                      {activities.filter(a => a.category === cat).map((act, i) => {
-                        const globalIdx = activities.findIndex(ga => ga.label === act.label && ga.category === act.category);
-                        return (
-                          <div key={i} className="space-y-1">
-                            <Label className="text-xs font-bold text-slate-600">{act.label}</Label>
-                            <Select value={act.column} onValueChange={(v) => updateActivityMapping(globalIdx, v)}>
-                              <SelectTrigger className="h-9 bg-white">
-                                <SelectValue placeholder="Ignorar" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">(Ignorar)</SelectItem>
-                                {columns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                  
-                  <Button onClick={generateScript} className="w-full bg-indigo-600 hover:bg-indigo-700 mt-4 py-6 text-lg rounded-2xl shadow-lg shadow-indigo-100">
-                    <ClipboardCopy className="w-5 h-5 mr-2" />
-                    Copiar Script
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
           </div>
 
+          {/* Visualização */}
           <div className="lg:col-span-8">
-            <Card className="border-none shadow-sm min-h-[600px]">
-              <CardHeader className="border-b border-slate-100">
-                <CardTitle>Visualização dos Dados</CardTitle>
+            <Card className="border-none shadow-sm h-full min-h-[500px] overflow-hidden">
+              <CardHeader className="border-b border-slate-100 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">Visualização da Turma</CardTitle>
+                  <CardDescription>
+                    {selectedTurma === 'all' ? 'Mostrando todos os alunos' : `Turma: ${selectedTurma}`}
+                  </CardDescription>
+                </div>
+                {selectedArea && (
+                  <div className="px-3 py-1 bg-green-50 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-wider border border-green-100">
+                    Mapeado: {selectedArea} & {AREAS.find(a => a.id === selectedArea)?.rec}
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="p-0">
-                {data.length > 0 ? (
-                  <div className="overflow-auto max-h-[700px]">
+                {filteredData.length > 0 ? (
+                  <div className="overflow-auto max-h-[600px]">
                     <Table>
-                      <TableHeader className="bg-slate-50 sticky top-0">
+                      <TableHeader className="bg-slate-50/50 sticky top-0 z-10">
                         <TableRow>
-                          <TableHead className="font-bold">Aluno</TableHead>
-                          {activities.filter(a => a.column !== 'none').map((a, i) => (
-                            <TableHead key={i} className="text-center font-bold text-[10px] leading-tight">
-                              {a.category.split(' ')[0]}<br/>{a.label}
-                            </TableHead>
-                          ))}
+                          <TableHead className="font-bold text-slate-700">Aluno</TableHead>
+                          {selectedArea && (
+                            <>
+                              <TableHead className="text-center font-bold text-indigo-600">Av ({selectedArea})</TableHead>
+                              <TableHead className="text-center font-bold text-orange-600">Rec ({AREAS.find(a => a.id === selectedArea)?.rec})</TableHead>
+                            </>
+                          )}
+                          {turmaCol && <TableHead className="text-right font-bold text-slate-400">Turma</TableHead>}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.slice(0, 20).map((row, i) => (
-                          <TableRow key={i}>
-                            <TableCell className="font-medium text-xs">{row[studentNameCol] || '-'}</TableCell>
-                            {activities.filter(a => a.column !== 'none').map((a, j) => (
-                              <TableCell key={j} className="text-center text-xs">{row[a.column] ?? '-'}</TableCell>
-                            ))}
+                        {filteredData.map((row, i) => (
+                          <TableRow key={i} className="hover:bg-slate-50/50 transition-colors">
+                            <TableCell className="font-medium text-slate-900">{row[studentNameCol] || '-'}</TableCell>
+                            {selectedArea && (
+                              <>
+                                <TableCell className="text-center font-bold text-indigo-600">{row[AREAS.find(a => a.id === selectedArea)!.av] ?? '-'}</TableCell>
+                                <TableCell className="text-center font-bold text-orange-600">{row[AREAS.find(a => a.id === selectedArea)!.rec] ?? '-'}</TableCell>
+                              </>
+                            )}
+                            {turmaCol && <TableCell className="text-right text-slate-400 text-xs">{row[turmaCol]}</TableCell>}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -250,7 +307,7 @@ const Index = () => {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[500px] text-slate-400">
                     <FileSpreadsheet className="w-16 h-16 mb-4 opacity-10" />
-                    <p>Aguardando upload da planilha...</p>
+                    <p className="text-sm">Carregue uma planilha para começar</p>
                   </div>
                 )}
               </CardContent>
