@@ -5,14 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, GraduationCap, Settings2, Layers, AlertCircle, ChevronDown } from "lucide-react";
+import { FileSpreadsheet, ClipboardCopy, Settings2, Layers, GraduationCap, CheckCircle2 } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-interface StudentData {
-  [key: string]: any;
+interface WorkbookData {
+  [sheetName: string]: any[];
 }
 
 const AREAS = [
@@ -36,11 +35,9 @@ const FIELDS = [
 ];
 
 const Index = () => {
-  const [data, setData] = useState<StudentData[]>([]);
-  const [allColumns, setAllColumns] = useState<string[]>([]);
+  const [workbookData, setWorkbookData] = useState<WorkbookData>({});
+  const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [studentNameCol, setStudentNameCol] = useState<string>('');
-  const [turmaCol, setTurmaCol] = useState<string>('');
-  const [showConfig, setShowConfig] = useState(false);
   
   const [selectedTurma, setSelectedTurma] = useState<string>('');
   const [selectedArea, setSelectedArea] = useState<string>('');
@@ -56,43 +53,20 @@ const Index = () => {
       try {
         const bData = new Uint8Array(evt.target?.result as ArrayBuffer);
         const workbook = XLSX.read(bData, { type: 'array' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
         
-        if (jsonData.length > 0) {
-          const cols = Object.keys(jsonData[0]);
-          setAllColumns(cols);
-          setData(jsonData);
-          
-          // Lógica de detecção inteligente baseada no conteúdo
-          let detectedTurma = '';
-          let detectedName = '';
+        const newWorkbookData: WorkbookData = {};
+        workbook.SheetNames.forEach(name => {
+          const worksheet = workbook.Sheets[name];
+          newWorkbookData[name] = XLSX.utils.sheet_to_json(worksheet);
+        });
 
-          cols.forEach(col => {
-            const sampleValue = String(jsonData[0][col] || '');
-            // Padrão SEGES: Começa com número, tem ª e hífen (ex: 1ªV01-LCH)
-            if (/\dª.*-/.test(sampleValue)) {
-              detectedTurma = col;
-            } 
-            // Se não for turma e tiver espaços, provavelmente é nome
-            else if (sampleValue.includes(' ') && !detectedName) {
-              detectedName = col;
-            }
-          });
-
-          // Fallback para nomes de colunas se a análise de dados falhar
-          if (!detectedTurma) detectedTurma = cols.find(c => /turma|classe/i.test(c)) || '';
-          if (!detectedName) detectedName = cols.find(c => /nome|aluno/i.test(c)) || '';
-
-          setTurmaCol(detectedTurma);
-          setStudentNameCol(detectedName);
-          
-          if (!detectedTurma || !detectedName) {
-            setShowConfig(true);
-            showError("Não identificamos as colunas automaticamente. Verifique os ajustes.");
-          } else {
-            showSuccess("Planilha carregada e colunas identificadas!");
-          }
+        setWorkbookData(newWorkbookData);
+        setSheetNames(workbook.SheetNames);
+        
+        if (workbook.SheetNames.length > 0) {
+          setSelectedTurma(workbook.SheetNames[0]);
+          detectStudentColumn(newWorkbookData[workbook.SheetNames[0]]);
+          showSuccess(`${workbook.SheetNames.length} turmas (abas) carregadas!`);
         }
       } catch (err) {
         showError("Erro ao processar Excel.");
@@ -101,16 +75,22 @@ const Index = () => {
     reader.readAsArrayBuffer(file);
   };
 
-  const uniqueTurmas = useMemo(() => {
-    if (!turmaCol || data.length === 0) return [];
-    const turmas = data.map(item => String(item[turmaCol] || '')).filter(Boolean);
-    return Array.from(new Set(turmas)).sort();
-  }, [data, turmaCol]);
+  const detectStudentColumn = (data: any[]) => {
+    if (!data || data.length === 0) return;
+    const cols = Object.keys(data[0]);
+    
+    // Procura por uma coluna que contenha nomes (strings com espaços)
+    const detected = cols.find(col => {
+      const val = String(data[0][col] || '');
+      return val.includes(' ') && !/\d/.test(val);
+    }) || cols.find(c => /nome|aluno/i.test(c)) || cols[0];
+
+    setStudentNameCol(detected);
+  };
 
   const filteredData = useMemo(() => {
-    if (!selectedTurma || !turmaCol) return [];
-    return data.filter(item => String(item[turmaCol]) === selectedTurma);
-  }, [data, selectedTurma, turmaCol]);
+    return workbookData[selectedTurma] || [];
+  }, [workbookData, selectedTurma]);
 
   const generateScript = () => {
     if (!selectedTurma) return showError("Selecione a Turma.");
@@ -150,9 +130,10 @@ const Index = () => {
       });
       count++;
       row.style.backgroundColor = '#f0fdf4';
+      row.style.borderLeft = '4px solid #22c55e';
     }
   });
-  alert('Sucesso! ' + count + ' alunos atualizados.');
+  alert('Sucesso! ' + count + ' alunos da turma "${selectedTurma}" atualizados.');
 })();`;
 
     navigator.clipboard.writeText(script);
@@ -163,127 +144,144 @@ const Index = () => {
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        <header className="flex flex-col md:flex-row items-center justify-between bg-white p-6 rounded-3xl shadow-sm border border-slate-100 gap-4">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-indigo-600 rounded-2xl shadow-lg shadow-indigo-100">
-              <GraduationCap className="text-white w-8 h-8" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lançador SEGES</h1>
-              <p className="text-slate-500 text-sm">Automatização inteligente de diários</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-            <FileSpreadsheet className="w-5 h-5 text-indigo-600 ml-2" />
-            <Input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="max-w-[200px] border-none bg-transparent text-xs cursor-pointer" />
-          </div>
-        </header>
-
-        <Collapsible open={showConfig} onOpenChange={setShowConfig} className="w-full">
-          <div className="flex justify-end mb-2">
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-[10px] text-slate-400 hover:text-indigo-600 uppercase font-bold tracking-widest">
-                {showConfig ? 'Ocultar Ajustes' : 'Ajustar Colunas da Planilha'}
-                <ChevronDown className={`ml-1 w-3 h-3 transition-transform ${showConfig ? 'rotate-180' : ''}`} />
-              </Button>
-            </CollapsibleTrigger>
-          </div>
-          <CollapsibleContent>
-            <Card className="border-dashed border-2 border-slate-200 bg-slate-50/50 mb-6">
-              <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Coluna do Nome do Aluno</Label>
-                  <Select value={studentNameCol} onValueChange={setStudentNameCol}>
-                    <SelectTrigger className="bg-white h-9 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] font-bold text-slate-500 uppercase">Coluna da Turma</Label>
-                  <Select value={turmaCol} onValueChange={setTurmaCol}>
-                    <SelectTrigger className="bg-white h-9 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          </CollapsibleContent>
-        </Collapsible>
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* Coluna de Configuração */}
           <div className="lg:col-span-4 space-y-6">
             <Card className="border-none shadow-sm overflow-hidden">
-              <CardHeader className="bg-indigo-600 text-white">
-                <CardTitle className="text-sm font-bold flex items-center gap-2"><Settings2 className="w-4 h-4" /> Configurar Lançamento</CardTitle>
+              <CardHeader className="bg-indigo-600 text-white pb-8">
+                <div className="flex items-center gap-3 mb-2">
+                  <GraduationCap className="w-6 h-6" />
+                  <CardTitle className="text-lg font-bold">Lançador SEGES</CardTitle>
+                </div>
+                <CardDescription className="text-indigo-100 text-xs">
+                  Configure os dados da planilha para gerar o script de lançamento.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="p-5 space-y-5">
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">1</span>
-                    Turma (Obrigatório)
+              
+              <CardContent className="p-5 space-y-6 -mt-6">
+                
+                {/* Passo 0: Upload */}
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                  <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <FileSpreadsheet className="w-3 h-3" /> 1. Carregar Planilha
                   </Label>
-                  <Select value={selectedTurma} onValueChange={setSelectedTurma} disabled={data.length === 0}>
-                    <SelectTrigger className="bg-slate-50 border-slate-100 h-11">
-                      <SelectValue placeholder={data.length === 0 ? "Carregue uma planilha..." : "Selecione a turma..."} />
-                    </SelectTrigger>
-                    <SelectContent>{uniqueTurmas.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <div className="relative group">
+                    <Input 
+                      type="file" 
+                      accept=".xlsx,.xls" 
+                      onChange={handleFileUpload} 
+                      className="cursor-pointer bg-slate-50 border-dashed border-2 border-slate-200 hover:border-indigo-400 transition-colors h-16 text-[10px] pt-6" 
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-400 text-xs font-medium group-hover:text-indigo-600">
+                      {sheetNames.length > 0 ? (
+                        <span className="flex items-center gap-2 text-green-600"><CheckCircle2 className="w-4 h-4" /> Planilha Pronta</span>
+                      ) : (
+                        "Clique para selecionar o arquivo"
+                      )}
+                    </div>
+                  </div>
                 </div>
 
+                {/* Passo 1: Turma */}
                 <div className="space-y-2">
                   <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">2</span>
-                    Área (Obrigatório)
+                    Turma (Abas da Planilha)
+                  </Label>
+                  <Select value={selectedTurma} onValueChange={(val) => {
+                    setSelectedTurma(val);
+                    detectStudentColumn(workbookData[val]);
+                  }} disabled={sheetNames.length === 0}>
+                    <SelectTrigger className="bg-slate-50 border-slate-100 h-11">
+                      <SelectValue placeholder="Selecione a turma..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sheetNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Passo 2: Área */}
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">3</span>
+                    Área de Conhecimento
                   </Label>
                   <div className="grid grid-cols-2 gap-2">
                     {AREAS.map(area => (
-                      <button key={area.id} onClick={() => setSelectedArea(area.id)} className={`p-3 rounded-xl text-xs font-bold transition-all border-2 ${selectedArea === area.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-white border-slate-100 text-slate-500 hover:border-indigo-200'}`}>
+                      <button 
+                        key={area.id} 
+                        onClick={() => setSelectedArea(area.id)} 
+                        className={`p-3 rounded-xl text-xs font-bold transition-all border-2 ${
+                          selectedArea === area.id 
+                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
+                          : 'bg-white border-slate-100 text-slate-500 hover:border-indigo-200'
+                        }`}
+                      >
                         {area.id}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-[10px]">3</span>
-                    Tipo de Avaliação (Opcional)
-                  </Label>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="bg-slate-50 border-slate-100 h-11"><SelectValue /></SelectTrigger>
-                    <SelectContent>{CATEGORIES.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                {/* Passo 3: Filtros Adicionais */}
+                <div className="grid grid-cols-1 gap-4 pt-2">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Categoria</Label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger className="bg-slate-50 border-slate-100 h-10 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Campo de Nota</Label>
+                    <Select value={selectedField} onValueChange={setSelectedField}>
+                      <SelectTrigger className="bg-slate-50 border-slate-100 h-10 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FIELDS.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                    <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-[10px]">4</span>
-                    Campo de Nota (Opcional)
-                  </Label>
-                  <Select value={selectedField} onValueChange={setSelectedField}>
-                    <SelectTrigger className="bg-slate-50 border-slate-100 h-11"><SelectValue /></SelectTrigger>
-                    <SelectContent>{FIELDS.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-
-                <Button onClick={generateScript} disabled={!selectedTurma || !selectedArea} className="w-full bg-indigo-600 hover:bg-indigo-700 py-7 text-md font-bold rounded-2xl shadow-lg mt-4 transition-all active:scale-95">
+                <Button 
+                  onClick={generateScript} 
+                  disabled={!selectedTurma || !selectedArea} 
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 py-7 text-md font-bold rounded-2xl shadow-lg mt-4 transition-all active:scale-95"
+                >
                   <ClipboardCopy className="w-5 h-5 mr-2" /> Copiar Script
                 </Button>
               </CardContent>
             </Card>
           </div>
 
+          {/* Coluna de Visualização */}
           <div className="lg:col-span-8">
             <Card className="border-none shadow-sm h-full min-h-[600px] overflow-hidden flex flex-col">
               <CardHeader className="border-b border-slate-100 flex flex-row items-center justify-between bg-white">
                 <div>
-                  <CardTitle className="text-lg">Visualização do Lançamento</CardTitle>
-                  <CardDescription>{selectedTurma ? `Turma: ${selectedTurma}` : 'Selecione uma turma para visualizar'}</CardDescription>
+                  <CardTitle className="text-lg">Visualização dos Dados</CardTitle>
+                  <CardDescription>
+                    {selectedTurma ? `Turma: ${selectedTurma}` : 'Carregue uma planilha para começar'}
+                  </CardDescription>
                 </div>
+                {selectedArea && (
+                  <div className="flex gap-2">
+                    <div className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-[10px] font-bold border border-indigo-100 uppercase">
+                      Av: {selectedArea}
+                    </div>
+                    <div className="px-3 py-1 bg-orange-50 text-orange-700 rounded-full text-[10px] font-bold border border-orange-100 uppercase">
+                      Rec: R{selectedArea}
+                    </div>
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="p-0 flex-1 bg-white">
                 {filteredData.length > 0 ? (
-                  <div className="overflow-auto max-h-[650px]">
+                  <div className="overflow-auto max-h-[700px]">
                     <Table>
                       <TableHeader className="bg-slate-50/50 sticky top-0 z-10">
                         <TableRow>
@@ -314,7 +312,7 @@ const Index = () => {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-slate-400">
                     <Layers className="w-16 h-16 mb-4 opacity-10" />
-                    <p className="text-sm font-medium">Aguardando seleção de turma e área</p>
+                    <p className="text-sm font-medium">Aguardando dados da planilha</p>
                   </div>
                 )}
               </CardContent>
