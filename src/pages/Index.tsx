@@ -137,39 +137,67 @@ const Index = () => {
     const script = `
 (function() {
   const studentsData = ${JSON.stringify(scriptData)};
+  
+  const normalize = (str) => str.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toUpperCase().trim();
+  
+  console.log("Iniciando lançamento de notas...");
+  
+  // Identifica os cabeçalhos das categorias (os que têm colspan)
+  const allThs = Array.from(document.querySelectorAll('thead th'));
+  const categoryHeaders = allThs.filter(th => {
+    const text = normalize(th.innerText);
+    return ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO', 'PROVA', 'PROJETO', 'ATIVIDADE'].some(term => text.includes(term));
+  });
+
+  console.log("Categorias encontradas no SEGES:", categoryHeaders.map(th => th.innerText));
+
   let count = 0;
   studentsData.forEach(student => {
-    const row = Array.from(document.querySelectorAll('tr')).find(tr => tr.innerText.toUpperCase().includes(student.name));
+    const normalizedStudentName = normalize(student.name);
+    const row = Array.from(document.querySelectorAll('tr')).find(tr => normalize(tr.innerText).includes(normalizedStudentName));
+    
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
+      
       student.mapping.forEach((map) => {
-        const categoriesWithInputs = Array.from(document.querySelectorAll('thead th')).filter(th => 
-          ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO ESCRITA', 'PROVA', 'PROJETO', 'ATIVIDADE'].some(term => th.innerText.toUpperCase().includes(term))
-        );
-        const targetTh = categoriesWithInputs.find(th => th.innerText.toUpperCase().includes(map.search));
+        const searchNorm = normalize(map.search);
+        const targetTh = categoryHeaders.find(th => normalize(th.innerText).includes(searchNorm));
+        
         if (targetTh) {
-          const catPos = categoriesWithInputs.indexOf(targetTh);
+          const catPos = categoryHeaders.indexOf(targetTh);
+          // No SEGES, cada categoria tem Av e Rec. 
+          // O índice do input depende de quantos inputs existem antes.
           const idxAv = catPos * 2;
           const idxRec = catPos * 2 + 1;
-          if (map.av !== "" && inputs[idxAv]) {
-            inputs[idxAv].value = map.av.toString().replace('.', ',');
-            ['input', 'change', 'blur'].forEach(t => inputs[idxAv].dispatchEvent(new Event(t, { bubbles: true })));
+
+          const fillInput = (input, val) => {
+            if (input && val !== "") {
+              input.value = val.toString().replace('.', ',');
+              ['input', 'change', 'blur'].forEach(t => input.dispatchEvent(new Event(t, { bubbles: true })));
+              return true;
+            }
+            return false;
+          };
+
+          const filledAv = fillInput(inputs[idxAv], map.av);
+          const filledRec = fillInput(inputs[idxRec], map.rec);
+          
+          if (filledAv || filledRec) {
+             row.style.backgroundColor = '#f0fdf4';
           }
-          if (map.rec !== "" && inputs[idxRec]) {
-            inputs[idxRec].value = map.rec.toString().replace('.', ',');
-            ['input', 'change', 'blur'].forEach(t => inputs[idxRec].dispatchEvent(new Event(t, { bubbles: true })));
-          }
+        } else {
+          console.warn("Não foi possível encontrar a coluna para:", map.search);
         }
       });
       count++;
-      row.style.backgroundColor = '#f0fdf4';
     }
   });
-  alert('Sucesso! ' + count + ' alunos atualizados.');
+  
+  alert('Sucesso! ' + count + ' alunos processados no script.');
 })();`;
 
     navigator.clipboard.writeText(script);
-    showSuccess("Script copiado! Use no SEGES.");
+    showSuccess("Script atualizado e copiado!");
   };
 
   return (
