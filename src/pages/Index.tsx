@@ -86,7 +86,14 @@ const Index = () => {
                 studentObj[area.id] = row.filter((_, i) => processedHeaders[i] === area.id);
                 studentObj[`R${area.id}`] = row.filter((_, i) => processedHeaders[i] === `R${area.id}`);
             });
-            studentObj._name = String(row.find(cell => String(cell).length > 5 && !/\d/.test(String(cell))) || "");
+            
+            // Nova lógica de extração de nome: pega o primeiro texto longo que não seja um número puro
+            // e que não seja um dos cabeçalhos de área.
+            studentObj._name = String(row.find(cell => {
+              const val = String(cell).trim();
+              return val.length > 5 && isNaN(Number(val)) && !['CH', 'CN', 'LI', 'MT'].includes(val);
+            }) || "");
+            
             return studentObj;
           }).filter(row => row._name.length > 3 && !row._name.includes("TOTAL") && !row._name.includes("MÉDIA"));
 
@@ -120,8 +127,14 @@ const Index = () => {
     const scriptData = filteredData.map(row => {
       const notes = row[selectedArea] || [];
       const recs = row[`R${selectedArea}`] || [];
+      
+      // Limpa o nome para o script: remove observações como "-rem. da..." ou "(...)"
+      // Isso garante que o SEGES encontre o nome base do aluno.
+      const cleanName = row._name.split(/[-—(]/)[0].trim().toUpperCase();
+      
       return {
-        name: row._name.trim().toUpperCase(),
+        name: cleanName,
+        fullName: row._name.trim().toUpperCase(),
         notes,
         recs
       };
@@ -134,21 +147,12 @@ const Index = () => {
   const categoryId = "${selectedCategory}";
   const field = "${selectedField}";
   
-  // 1. Mapear colunas do SEGES dinamicamente
   const headers = Array.from(document.querySelectorAll('th')).map(th => th.innerText.toUpperCase());
   const getColumnIndices = (searchText) => {
-    const thIndex = headers.findIndex(h => h.includes(searchText));
-    if (thIndex === -1) return null;
-    
-    // Conta quantos inputs existem antes desta categoria para achar o índice inicial
-    let inputCount = 0;
     const allThs = Array.from(document.querySelectorAll('thead tr:first-child th'));
     const targetTh = allThs.find(th => th.innerText.toUpperCase().includes(searchText));
-    
     if (!targetTh) return null;
     
-    // No SEGES, cada categoria tem 2 inputs (Av e Rec)
-    // Vamos descobrir a posição da categoria entre as que possuem inputs
     const categoriesWithInputs = allThs.filter(th => 
       ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO ESCRITA'].some(term => th.innerText.toUpperCase().includes(term))
     );
@@ -161,13 +165,14 @@ const Index = () => {
   let notFound = [];
 
   studentsData.forEach(student => {
-    const row = Array.from(document.querySelectorAll('tr')).find(tr => 
-      tr.innerText.toUpperCase().includes(student.name)
-    );
+    // Busca o aluno na página. Tenta pelo nome limpo primeiro.
+    const row = Array.from(document.querySelectorAll('tr')).find(tr => {
+      const text = tr.innerText.toUpperCase();
+      return text.includes(student.name);
+    });
 
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
-      
       const targetCategories = categoryId === 'all' 
         ? ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO ESCRITA'] 
         : [categorySearch];
@@ -179,7 +184,6 @@ const Index = () => {
         const [idxAv, idxRec] = indices;
         const dataIdx = categoryId === 'all' ? catIdxInList : parseInt(categoryId);
 
-        // Lançar Avaliação
         if ((field === 'av' || field === 'both') && inputs[idxAv]) {
           const val = student.notes[dataIdx];
           if (val !== undefined && val !== null && val !== "") {
@@ -188,7 +192,6 @@ const Index = () => {
           }
         }
 
-        // Lançar Recuperação
         if ((field === 'rec' || field === 'both') && inputs[idxRec]) {
           const val = student.recs[dataIdx];
           if (val !== undefined && val !== null && val !== "") {
@@ -202,12 +205,12 @@ const Index = () => {
       row.style.backgroundColor = '#f0fdf4';
       row.style.borderLeft = '4px solid #22c55e';
     } else {
-      notFound.push(student.name);
+      notFound.push(student.fullName);
     }
   });
 
   const msg = 'Sucesso! ' + count + ' alunos atualizados.';
-  const warn = notFound.length > 0 ? '\\n\\n' + notFound.length + ' alunos não encontrados na página (verifique se a turma está correta).' : '';
+  const warn = notFound.length > 0 ? '\\n\\n' + notFound.length + ' alunos não encontrados:\\n' + notFound.join('\\n') : '';
   alert(msg + warn);
 })();`;
 
