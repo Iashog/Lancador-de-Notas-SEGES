@@ -5,12 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings2, Layers, Navigation, Plus, Trash2, Search, ClipboardCopy } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Settings2, Layers, Navigation, Plus, Trash2, Search, ClipboardCopy, CheckSquare, Square } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 
-// Helper para converter letra (A, B, C) em índice (0, 1, 2)
 const columnLetterToIndex = (letter: string) => {
   try {
     return XLSX.utils.decode_col(letter.toUpperCase().trim());
@@ -19,7 +19,6 @@ const columnLetterToIndex = (letter: string) => {
   }
 };
 
-// Helper para converter índice em letra
 const indexToColumnLetter = (index: number) => {
   return XLSX.utils.encode_col(index);
 };
@@ -27,20 +26,21 @@ const indexToColumnLetter = (index: number) => {
 interface SegesCategory {
   id: string;
   name: string;
-  avCol: string; // Letra da coluna (ex: "D")
-  recCol: string; // Letra da coluna (ex: "E")
+  avCol: string;
+  recCol: string;
+  selected: boolean;
 }
 
 const Index = () => {
   const [rawSheets, setRawSheets] = useState<{[key: string]: any[][]}>({});
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [selectedTurma, setSelectedTurma] = useState<string>('');
-  const [studentNameCol, setStudentNameCol] = useState<string>(''); // Letra da coluna de nomes
+  const [studentNameCol, setStudentNameCol] = useState<string>('');
   
   const [segesCategories, setSegesCategories] = useState<SegesCategory[]>([
-    { id: '1', name: 'Atividade Discursiva', avCol: '', recCol: '' },
-    { id: '2', name: 'Prova Interdisciplinar', avCol: '', recCol: '' },
-    { id: '3', name: 'Produção Escrita', avCol: '', recCol: '' },
+    { id: '1', name: 'Atividade Discursiva', avCol: '', recCol: '', selected: true },
+    { id: '2', name: 'Prova Interdisciplinar', avCol: '', recCol: '', selected: true },
+    { id: '3', name: 'Produção Escrita', avCol: '', recCol: '', selected: true },
   ]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,16 +52,13 @@ const Index = () => {
       try {
         const bData = new Uint8Array(evt.target?.result as ArrayBuffer);
         const workbook = XLSX.read(bData, { type: 'array' });
-        
         const sheets: {[key: string]: any[][]} = {};
         workbook.SheetNames.forEach(name => {
           const worksheet = workbook.Sheets[name];
           sheets[name] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
         });
-
         setRawSheets(sheets);
         setSheetNames(workbook.SheetNames);
-        
         if (workbook.SheetNames.length > 0) {
           setSelectedTurma(workbook.SheetNames[0]);
           showSuccess("Planilha carregada!");
@@ -73,12 +70,9 @@ const Index = () => {
     reader.readAsArrayBuffer(file);
   };
 
-  // Auto-detectar coluna de nomes quando a turma muda
   useEffect(() => {
     if (!selectedTurma || !rawSheets[selectedTurma]) return;
-    
     const rows = rawSheets[selectedTurma];
-    // Procura nas primeiras 15 linhas por palavras-chave
     for (let i = 0; i < Math.min(rows.length, 15); i++) {
       const row = rows[i];
       const nameIdx = row.findIndex(cell => /nome|aluno|estudante/i.test(String(cell)));
@@ -90,30 +84,30 @@ const Index = () => {
   }, [selectedTurma, rawSheets]);
 
   const addCategory = () => {
-    setSegesCategories([...segesCategories, { id: Date.now().toString(), name: 'Nova Avaliação', avCol: '', recCol: '' }]);
+    setSegesCategories([...segesCategories, { id: Date.now().toString(), name: 'Nova Avaliação', avCol: '', recCol: '', selected: true }]);
   };
 
   const removeCategory = (id: string) => {
     setSegesCategories(segesCategories.filter(c => c.id !== id));
   };
 
-  const updateCategory = (id: string, field: keyof SegesCategory, value: string) => {
-    setSegesCategories(segesCategories.map(c => c.id === id ? { ...c, [field]: value.toUpperCase() } : c));
+  const updateCategory = (id: string, field: keyof SegesCategory, value: any) => {
+    setSegesCategories(segesCategories.map(c => c.id === id ? { ...c, [field]: typeof value === 'string' ? value.toUpperCase() : value } : c));
   };
 
-  // Processa os dados para exibição e script
+  const toggleAll = (selected: boolean) => {
+    setSegesCategories(segesCategories.map(c => ({ ...c, selected })));
+  };
+
   const processedData = useMemo(() => {
     if (!selectedTurma || !rawSheets[selectedTurma] || !studentNameCol) return [];
-    
     const rows = rawSheets[selectedTurma];
     const nameIdx = columnLetterToIndex(studentNameCol);
-    
-    // Encontra onde começam os dados (primeira linha após o cabeçalho que tem um nome válido)
     const headerIdx = rows.findIndex(r => /nome|aluno|estudante/i.test(String(r[nameIdx])));
     const startIdx = headerIdx !== -1 ? headerIdx + 1 : 0;
 
     return rows.slice(startIdx)
-      .filter(row => String(row[nameIdx] || "").trim().length > 3) // Filtra linhas sem nome real
+      .filter(row => String(row[nameIdx] || "").trim().length > 3)
       .map(row => {
         const studentData: any = { name: String(row[nameIdx]).trim() };
         segesCategories.forEach(cat => {
@@ -127,11 +121,13 @@ const Index = () => {
   }, [rawSheets, selectedTurma, studentNameCol, segesCategories]);
 
   const generateScript = () => {
+    const activeCategories = segesCategories.filter(c => c.selected);
+    if (activeCategories.length === 0) return showError("Selecione ao menos uma coluna para lançar.");
     if (processedData.length === 0) return showError("Nenhum dado para processar.");
 
     const scriptData = processedData.map(student => ({
       name: student.name.toUpperCase(),
-      mapping: segesCategories.map(cat => ({
+      mapping: activeCategories.map(cat => ({
         search: cat.name.toUpperCase(),
         av: student[cat.id + '_av'] || "",
         rec: student[cat.id + '_rec'] || ""
@@ -180,7 +176,6 @@ const Index = () => {
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Cabeçalho Estilizado */}
         <Card className="border-none shadow-lg overflow-hidden mb-8">
           <CardHeader className="bg-[#4338ca] text-white p-8 md:p-10">
             <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8">
@@ -200,8 +195,6 @@ const Index = () => {
         </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Painel de Configuração */}
           <div className="lg:col-span-5 space-y-6">
             <Card className="border-none shadow-sm overflow-hidden">
               <CardHeader className="bg-slate-50 border-b border-slate-100">
@@ -242,14 +235,29 @@ const Index = () => {
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <div className="flex items-center justify-between">
                     <Label className="text-xs font-bold text-indigo-600 uppercase tracking-wider">4. Mapear Notas (Letras)</Label>
-                    <Button onClick={addCategory} variant="outline" size="sm" className="h-7 text-[10px] gap-1">
-                      <Plus className="w-3 h-3" /> Add Categoria
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button onClick={() => toggleAll(true)} variant="ghost" size="sm" className="h-7 text-[9px] px-2 gap-1">
+                        <CheckSquare className="w-3 h-3" /> Tudo
+                      </Button>
+                      <Button onClick={() => toggleAll(false)} variant="ghost" size="sm" className="h-7 text-[9px] px-2 gap-1">
+                        <Square className="w-3 h-3" /> Limpar
+                      </Button>
+                      <Button onClick={addCategory} variant="outline" size="sm" className="h-7 text-[10px] gap-1">
+                        <Plus className="w-3 h-3" /> Add
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
                     {segesCategories.map((cat) => (
-                      <div key={cat.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 relative group">
+                      <div key={cat.id} className={`p-4 rounded-2xl border transition-all space-y-3 relative group ${cat.selected ? 'bg-white border-indigo-100 shadow-sm' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                        <div className="absolute top-3 left-3">
+                          <Checkbox 
+                            checked={cat.selected} 
+                            onCheckedChange={(checked) => updateCategory(cat.id, 'selected', checked)}
+                          />
+                        </div>
+                        
                         <Button 
                           variant="ghost" 
                           size="icon" 
@@ -259,7 +267,7 @@ const Index = () => {
                           <Trash2 className="w-3 h-3" />
                         </Button>
                         
-                        <div className="space-y-1">
+                        <div className="space-y-1 pl-8">
                           <Label className="text-[10px] text-slate-400 font-bold uppercase">Nome no SEGES</Label>
                           <Input 
                             value={cat.name} 
@@ -268,7 +276,7 @@ const Index = () => {
                           />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 gap-3 pl-8">
                           <div className="space-y-1">
                             <Label className="text-[10px] text-slate-400 font-bold uppercase">Coluna Av. (Letra)</Label>
                             <Input 
@@ -300,7 +308,6 @@ const Index = () => {
             </Card>
           </div>
 
-          {/* Visualização */}
           <div className="lg:col-span-7">
             <Card className="border-none shadow-sm h-full min-h-[600px] overflow-hidden flex flex-col">
               <CardHeader className="border-b border-slate-100 bg-white">
@@ -315,7 +322,7 @@ const Index = () => {
                         <TableRow>
                           <TableHead className="font-bold text-slate-700 pl-6">Aluno</TableHead>
                           {segesCategories.map(cat => (
-                            <TableHead key={cat.id} className="text-center font-bold text-indigo-600 text-[10px] uppercase leading-tight">
+                            <TableHead key={cat.id} className={`text-center font-bold text-[10px] uppercase leading-tight transition-opacity ${cat.selected ? 'text-indigo-600' : 'text-slate-300'}`}>
                               {cat.name}<br/><span className="text-slate-400">Col {cat.avCol || '?'}/{cat.recCol || '?'}</span>
                             </TableHead>
                           ))}
@@ -326,7 +333,7 @@ const Index = () => {
                           <TableRow key={i} className="hover:bg-slate-50/50 transition-colors">
                             <TableCell className="font-medium text-slate-900 text-[10px] pl-6">{student.name}</TableCell>
                             {segesCategories.map(cat => (
-                              <TableCell key={cat.id} className="text-center text-[10px] font-bold">
+                              <TableCell key={cat.id} className={`text-center text-[10px] font-bold transition-opacity ${cat.selected ? 'opacity-100' : 'opacity-20'}`}>
                                 <span className="text-indigo-600">{student[cat.id + '_av'] || '-'}</span>
                                 <span className="mx-1 text-slate-300">|</span>
                                 <span className="text-orange-600">{student[cat.id + '_rec'] || '-'}</span>
