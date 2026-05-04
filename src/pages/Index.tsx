@@ -1,33 +1,41 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, Settings2, Layers, Navigation, Plus, Trash2, Info } from "lucide-react";
+import { Settings2, Layers, Navigation, Plus, Trash2, Search } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 
-interface WorkbookData {
-  [sheetName: string]: any[];
-}
+// Helper para converter letra (A, B, C) em índice (0, 1, 2)
+const columnLetterToIndex = (letter: string) => {
+  try {
+    return XLSX.utils.decode_col(letter.toUpperCase().trim());
+  } catch (e) {
+    return -1;
+  }
+};
+
+// Helper para converter índice em letra
+const indexToColumnLetter = (index: number) => {
+  return XLSX.utils.encode_col(index);
+};
 
 interface SegesCategory {
   id: string;
   name: string;
-  avCol: string;
-  recCol: string;
+  avCol: string; // Letra da coluna (ex: "D")
+  recCol: string; // Letra da coluna (ex: "E")
 }
 
 const Index = () => {
-  const [workbookData, setWorkbookData] = useState<WorkbookData>({});
+  const [rawSheets, setRawSheets] = useState<{[key: string]: any[][]}>({});
   const [sheetNames, setSheetNames] = useState<string[]>([]);
-  const [allColumns, setAllColumns] = useState<string[]>([]);
-  
   const [selectedTurma, setSelectedTurma] = useState<string>('');
-  const [studentNameCol, setStudentNameCol] = useState<string>('');
+  const [studentNameCol, setStudentNameCol] = useState<string>(''); // Letra da coluna de nomes
   
   const [segesCategories, setSegesCategories] = useState<SegesCategory[]>([
     { id: '1', name: 'Atividade Discursiva', avCol: '', recCol: '' },
@@ -45,35 +53,17 @@ const Index = () => {
         const bData = new Uint8Array(evt.target?.result as ArrayBuffer);
         const workbook = XLSX.read(bData, { type: 'array' });
         
-        const newWorkbookData: WorkbookData = {};
-        let detectedCols: string[] = [];
-
+        const sheets: {[key: string]: any[][]} = {};
         workbook.SheetNames.forEach(name => {
           const worksheet = workbook.Sheets[name];
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
-          
-          const headerIdx = rows.findIndex(r => r.filter(c => String(c).trim() !== "").length > 3);
-          if (headerIdx === -1) return;
-
-          const headers = rows[headerIdx].map((h, i) => String(h || `Coluna ${i+1}`).trim());
-          detectedCols = Array.from(new Set([...detectedCols, ...headers]));
-
-          const dataRows = rows.slice(headerIdx + 1);
-          newWorkbookData[name] = dataRows.map(row => {
-            const obj: any = {};
-            headers.forEach((h, i) => obj[h] = row[i]);
-            return obj;
-          }).filter(row => String(Object.values(row)[0]).length > 2);
+          sheets[name] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
         });
 
-        setWorkbookData(newWorkbookData);
+        setRawSheets(sheets);
         setSheetNames(workbook.SheetNames);
-        setAllColumns(detectedCols);
         
         if (workbook.SheetNames.length > 0) {
           setSelectedTurma(workbook.SheetNames[0]);
-          const nameCol = detectedCols.find(c => /nome|aluno/i.test(c)) || detectedCols[0];
-          setStudentNameCol(nameCol);
           showSuccess("Planilha carregada!");
         }
       } catch (err) {
@@ -82,6 +72,22 @@ const Index = () => {
     };
     reader.readAsArrayBuffer(file);
   };
+
+  // Auto-detectar coluna de nomes quando a turma muda
+  useEffect(() => {
+    if (!selectedTurma || !rawSheets[selectedTurma]) return;
+    
+    const rows = rawSheets[selectedTurma];
+    // Procura nas primeiras 15 linhas por palavras-chave
+    for (let i = 0; i < Math.min(rows.length, 15); i++) {
+      const row = rows[i];
+      const nameIdx = row.findIndex(cell => /nome|aluno|estudante/i.test(String(cell)));
+      if (nameIdx !== -1) {
+        setStudentNameCol(indexToColumnLetter(nameIdx));
+        break;
+      }
+    }
+  }, [selectedTurma, rawSheets]);
 
   const addCategory = () => {
     setSegesCategories([...segesCategories, { id: Date.now().toString(), name: 'Nova Avaliação', avCol: '', recCol: '' }]);
@@ -92,22 +98,45 @@ const Index = () => {
   };
 
   const updateCategory = (id: string, field: keyof SegesCategory, value: string) => {
-    setSegesCategories(segesCategories.map(c => c.id === id ? { ...c, [field]: value } : c));
+    setSegesCategories(segesCategories.map(c => c.id === id ? { ...c, [field]: value.toUpperCase() } : c));
   };
 
-  const filteredData = useMemo(() => workbookData[selectedTurma] || [], [workbookData, selectedTurma]);
+  // Processa os dados para exibição e script
+  const processedData = useMemo(() => {
+    if (!selectedTurma || !rawSheets[selectedTurma] || !studentNameCol) return [];
+    
+    const rows = rawSheets[selectedTurma];
+    const nameIdx = columnLetterToIndex(studentNameCol);
+    
+    // Encontra onde começam os dados (primeira linha após o cabeçalho que tem um nome válido)
+    const headerIdx = rows.findIndex(r => /nome|aluno|estudante/i.test(String(r[nameIdx])));
+    const startIdx = headerIdx !== -1 ? headerIdx + 1 : 0;
+
+    return rows.slice(startIdx)
+      .filter(row => String(row[nameIdx] || "").trim().length > 3) // Filtra linhas sem nome real
+      .map(row => {
+        const studentData: any = { name: String(row[nameIdx]).trim() };
+        segesCategories.forEach(cat => {
+          const avIdx = columnLetterToIndex(cat.avCol);
+          const recIdx = columnLetterToIndex(cat.recCol);
+          studentData[cat.id + '_av'] = avIdx !== -1 ? row[avIdx] : "";
+          studentData[cat.id + '_rec'] = recIdx !== -1 ? row[recIdx] : "";
+        });
+        return studentData;
+      });
+  }, [rawSheets, selectedTurma, studentNameCol, segesCategories]);
 
   const generateScript = () => {
-    if (!selectedTurma || !studentNameCol) return showError("Configure a turma e a coluna de nomes.");
+    if (processedData.length === 0) return showError("Nenhum dado para processar.");
 
-    const scriptData = filteredData.map(row => {
-      const mapping = segesCategories.map(cat => ({
+    const scriptData = processedData.map(student => ({
+      name: student.name.toUpperCase(),
+      mapping: segesCategories.map(cat => ({
         search: cat.name.toUpperCase(),
-        av: row[cat.avCol] || "",
-        rec: row[cat.recCol] || ""
-      }));
-      return { name: String(row[studentNameCol]).trim().toUpperCase(), mapping };
-    });
+        av: student[cat.id + '_av'] || "",
+        rec: student[cat.id + '_rec'] || ""
+      }))
+    }));
 
     const script = `
 (function() {
@@ -144,14 +173,14 @@ const Index = () => {
 })();`;
 
     navigator.clipboard.writeText(script);
-    showSuccess("Script universal copiado!");
+    showSuccess("Script copiado! Use no SEGES.");
   };
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Cabeçalho Estilizado conforme Imagem */}
+        {/* Cabeçalho Estilizado */}
         <Card className="border-none shadow-lg overflow-hidden mb-8">
           <CardHeader className="bg-[#4338ca] text-white p-8 md:p-10">
             <div className="flex flex-col md:flex-row items-center gap-6 md:gap-8">
@@ -163,7 +192,7 @@ const Index = () => {
                   Lançador de Notas SEGES
                 </CardTitle>
                 <CardDescription className="text-indigo-100 text-lg md:text-xl font-medium opacity-90">
-                  Selecione a turma, copie o script e lance no sistema.
+                  Mapeamento inteligente por coordenadas de planilha.
                 </CardDescription>
               </div>
             </div>
@@ -178,7 +207,7 @@ const Index = () => {
               <CardHeader className="bg-slate-50 border-b border-slate-100">
                 <div className="flex items-center gap-3">
                   <Settings2 className="w-5 h-5 text-indigo-600" />
-                  <CardTitle className="text-sm font-bold text-slate-700 uppercase tracking-wider">Configuração do Lançamento</CardTitle>
+                  <CardTitle className="text-sm font-bold text-slate-700 uppercase tracking-wider">Configuração</CardTitle>
                 </div>
               </CardHeader>
               
@@ -198,16 +227,21 @@ const Index = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold">3. Coluna de Nomes na Planilha</Label>
-                  <Select value={studentNameCol} onValueChange={setStudentNameCol}>
-                    <SelectTrigger className="h-10 text-xs"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <Label className="text-xs font-bold flex items-center gap-2">
+                    3. Coluna de Nomes (Letra) 
+                    {studentNameCol && <span className="text-green-600 flex items-center gap-1"><Search className="w-3 h-3"/> Detectado</span>}
+                  </Label>
+                  <Input 
+                    placeholder="Ex: B" 
+                    value={studentNameCol} 
+                    onChange={(e) => setStudentNameCol(e.target.value.toUpperCase())}
+                    className="h-10 text-sm font-bold uppercase"
+                  />
                 </div>
 
                 <div className="space-y-4 pt-4 border-t border-slate-100">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-indigo-600 uppercase tracking-wider">4. Mapear para o SEGES</Label>
+                    <Label className="text-xs font-bold text-indigo-600 uppercase tracking-wider">4. Mapear Notas (Letras)</Label>
                     <Button onClick={addCategory} variant="outline" size="sm" className="h-7 text-[10px] gap-1">
                       <Plus className="w-3 h-3" /> Add Categoria
                     </Button>
@@ -226,7 +260,7 @@ const Index = () => {
                         </Button>
                         
                         <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-400 font-bold uppercase">Nome no SEGES (ex: Prova)</Label>
+                          <Label className="text-[10px] text-slate-400 font-bold uppercase">Nome no SEGES</Label>
                           <Input 
                             value={cat.name} 
                             onChange={(e) => updateCategory(cat.id, 'name', e.target.value)}
@@ -236,18 +270,22 @@ const Index = () => {
 
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
-                            <Label className="text-[10px] text-slate-400 font-bold uppercase">Coluna Av. (Excel)</Label>
-                            <Select value={cat.avCol} onValueChange={(v) => updateCategory(cat.id, 'avCol', v)}>
-                              <SelectTrigger className="h-8 text-[10px] bg-white"><SelectValue placeholder="Escolher..." /></SelectTrigger>
-                              <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                            </Select>
+                            <Label className="text-[10px] text-slate-400 font-bold uppercase">Coluna Av. (Letra)</Label>
+                            <Input 
+                              placeholder="Ex: D"
+                              value={cat.avCol}
+                              onChange={(e) => updateCategory(cat.id, 'avCol', e.target.value)}
+                              className="h-8 text-xs font-bold bg-white uppercase"
+                            />
                           </div>
                           <div className="space-y-1">
-                            <Label className="text-[10px] text-slate-400 font-bold uppercase">Coluna Rec. (Excel)</Label>
-                            <Select value={cat.recCol} onValueChange={(v) => updateCategory(cat.id, 'recCol', v)}>
-                              <SelectTrigger className="h-8 text-[10px] bg-white"><SelectValue placeholder="Escolher..." /></SelectTrigger>
-                              <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                            </Select>
+                            <Label className="text-[10px] text-slate-400 font-bold uppercase">Coluna Rec. (Letra)</Label>
+                            <Input 
+                              placeholder="Ex: E"
+                              value={cat.recCol}
+                              onChange={(e) => updateCategory(cat.id, 'recCol', e.target.value)}
+                              className="h-8 text-xs font-bold bg-white uppercase"
+                            />
                           </div>
                         </div>
                       </div>
@@ -266,11 +304,11 @@ const Index = () => {
           <div className="lg:col-span-7">
             <Card className="border-none shadow-sm h-full min-h-[600px] overflow-hidden flex flex-col">
               <CardHeader className="border-b border-slate-100 bg-white">
-                <CardTitle className="text-lg">Pré-visualização do Lançamento</CardTitle>
-                <CardDescription>Confira os dados mapeados antes de gerar o script</CardDescription>
+                <CardTitle className="text-lg">Pré-visualização</CardTitle>
+                <CardDescription>Dados extraídos das coordenadas informadas</CardDescription>
               </CardHeader>
               <CardContent className="p-0 flex-1 bg-white">
-                {filteredData.length > 0 ? (
+                {processedData.length > 0 ? (
                   <div className="overflow-auto max-h-[750px]">
                     <Table>
                       <TableHeader className="bg-slate-50/50 sticky top-0 z-10">
@@ -278,20 +316,20 @@ const Index = () => {
                           <TableHead className="font-bold text-slate-700 pl-6">Aluno</TableHead>
                           {segesCategories.map(cat => (
                             <TableHead key={cat.id} className="text-center font-bold text-indigo-600 text-[10px] uppercase leading-tight">
-                              {cat.name}<br/><span className="text-slate-400">Av | Rec</span>
+                              {cat.name}<br/><span className="text-slate-400">Col {cat.avCol || '?'}/{cat.recCol || '?'}</span>
                             </TableHead>
                           ))}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredData.map((row, i) => (
+                        {processedData.map((student, i) => (
                           <TableRow key={i} className="hover:bg-slate-50/50 transition-colors">
-                            <TableCell className="font-medium text-slate-900 text-[10px] pl-6">{row[studentNameCol] || '-'}</TableCell>
+                            <TableCell className="font-medium text-slate-900 text-[10px] pl-6">{student.name}</TableCell>
                             {segesCategories.map(cat => (
                               <TableCell key={cat.id} className="text-center text-[10px] font-bold">
-                                <span className="text-indigo-600">{row[cat.avCol] || '-'}</span>
+                                <span className="text-indigo-600">{student[cat.id + '_av'] || '-'}</span>
                                 <span className="mx-1 text-slate-300">|</span>
-                                <span className="text-orange-600">{row[cat.recCol] || '-'}</span>
+                                <span className="text-orange-600">{student[cat.id + '_rec'] || '-'}</span>
                               </TableCell>
                             ))}
                           </TableRow>
@@ -302,8 +340,8 @@ const Index = () => {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-slate-400 p-12 text-center">
                     <Layers className="w-16 h-16 mb-4 opacity-10" />
-                    <p className="text-sm font-medium">Aguardando configuração</p>
-                    <p className="text-xs opacity-60 mt-2 max-w-xs">Carregue sua planilha e use o painel ao lado para dizer ao app quais colunas do Excel representam cada nota no SEGES.</p>
+                    <p className="text-sm font-medium">Aguardando coordenadas</p>
+                    <p className="text-xs opacity-60 mt-2 max-w-xs">Informe as letras das colunas (A, B, C...) para ver os dados aqui.</p>
                   </div>
                 )}
               </CardContent>
