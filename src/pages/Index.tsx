@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Settings2, Layers, Navigation, Plus, Trash2, Search } from "lucide-react";
+import { Settings2, Layers, Navigation, Plus, Trash2, Search, ClipboardCopy } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
