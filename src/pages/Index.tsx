@@ -107,7 +107,10 @@ const Index = () => {
     const startIdx = headerIdx !== -1 ? headerIdx + 1 : 0;
 
     return rows.slice(startIdx)
-      .filter(row => String(row[nameIdx] || "").trim().length > 3)
+      .filter(row => {
+        const name = String(row[nameIdx] || "").trim();
+        return name.length > 3 && !name.toUpperCase().includes("MÉDIA DA TURMA");
+      })
       .map(row => {
         const studentData: any = { name: String(row[nameIdx]).trim() };
         segesCategories.forEach(cat => {
@@ -140,21 +143,30 @@ const Index = () => {
   
   const normalize = (str) => str.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toUpperCase().trim();
   
+  // Função para limpar o nome da planilha (remove observações após hífens ou parênteses)
+  const cleanExcelName = (name) => {
+    return normalize(name).split(/[\\-\\(]/)[0].trim();
+  };
+
   console.log("Iniciando lançamento de notas...");
   
-  // Identifica os cabeçalhos das categorias (os que têm colspan)
   const allThs = Array.from(document.querySelectorAll('thead th'));
   const categoryHeaders = allThs.filter(th => {
     const text = normalize(th.innerText);
     return ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO', 'PROVA', 'PROJETO', 'ATIVIDADE'].some(term => text.includes(term));
   });
 
-  console.log("Categorias encontradas no SEGES:", categoryHeaders.map(th => th.innerText));
-
   let count = 0;
   studentsData.forEach(student => {
-    const normalizedStudentName = normalize(student.name);
-    const row = Array.from(document.querySelectorAll('tr')).find(tr => normalize(tr.innerText).includes(normalizedStudentName));
+    const excelClean = cleanExcelName(student.name);
+    
+    // Busca a linha do aluno tentando várias estratégias de match
+    const row = Array.from(document.querySelectorAll('tr')).find(tr => {
+      const rowText = normalize(tr.innerText);
+      // 1. O nome limpo da planilha está na linha?
+      // 2. Ou o texto da linha (nome no SEGES) está contido no nome da planilha?
+      return rowText.includes(excelClean) || excelClean.includes(rowText.replace(/[0-9]/g, '').trim());
+    });
     
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
@@ -165,13 +177,11 @@ const Index = () => {
         
         if (targetTh) {
           const catPos = categoryHeaders.indexOf(targetTh);
-          // No SEGES, cada categoria tem Av e Rec. 
-          // O índice do input depende de quantos inputs existem antes.
           const idxAv = catPos * 2;
           const idxRec = catPos * 2 + 1;
 
           const fillInput = (input, val) => {
-            if (input && val !== "") {
+            if (input && val !== "" && val !== null && val !== undefined) {
               input.value = val.toString().replace('.', ',');
               ['input', 'change', 'blur'].forEach(t => input.dispatchEvent(new Event(t, { bubbles: true })));
               return true;
@@ -185,15 +195,15 @@ const Index = () => {
           if (filledAv || filledRec) {
              row.style.backgroundColor = '#f0fdf4';
           }
-        } else {
-          console.warn("Não foi possível encontrar a coluna para:", map.search);
         }
       });
       count++;
+    } else {
+      console.warn("Aluno não encontrado no SEGES:", student.name);
     }
   });
   
-  alert('Sucesso! ' + count + ' alunos processados no script.');
+  alert('Sucesso! ' + count + ' alunos processados.\\nVerifique o console (F12) se algum aluno não foi encontrado.');
 })();`;
 
     navigator.clipboard.writeText(script);
