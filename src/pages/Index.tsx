@@ -5,32 +5,43 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, Settings2, Layers, GraduationCap, Plus, Trash2, Info, AlertCircle } from "lucide-react";
+import { FileSpreadsheet, ClipboardCopy, Settings2, Layers, GraduationCap, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
 
-interface SegesCategory {
-  id: string;
-  name: string;
-  avCol: string;
-  recCol: string;
+interface WorkbookData {
+  [sheetName: string]: any[];
 }
 
+const AREAS = [
+  { id: 'CH', name: 'Ciências Humanas' },
+  { id: 'CN', name: 'Ciências da Natureza' },
+  { id: 'LI', name: 'Linguagens' },
+  { id: 'MT', name: 'Matemática' },
+];
+
+const CATEGORIES = [
+  { id: 'all', name: 'Todas as Categorias' },
+  { id: '0', name: 'Atividade Discursiva', search: 'DISCURSIVA' },
+  { id: '1', name: 'Prova Interdisciplinar', search: 'INTERDISCIPLINAR' },
+  { id: '2', name: 'Produção Escrita', search: 'PRODUCAO ESCRITA' },
+];
+
+const FIELDS = [
+  { id: 'both', name: 'Avaliação e Recuperação' },
+  { id: 'av', name: 'Apenas Avaliação (Av)' },
+  { id: 'rec', name: 'Apenas Recuperação (Rec)' },
+];
+
 const Index = () => {
-  const [workbookData, setWorkbookData] = useState<Record<string, any[]>>({});
+  const [workbookData, setWorkbookData] = useState<WorkbookData>({});
   const [sheetNames, setSheetNames] = useState<string[]>([]);
-  const [allColumns, setAllColumns] = useState<string[]>([]);
   
   const [selectedTurma, setSelectedTurma] = useState<string>('');
-  const [studentNameCol, setStudentNameCol] = useState<string>('');
-  
-  // Categorias dinâmicas que o usuário define
-  const [segesCategories, setSegesCategories] = useState<SegesCategory[]>([
-    { id: '1', name: 'DISCURSIVA', avCol: '', recCol: '' },
-    { id: '2', name: 'INTERDISCIPLINAR', avCol: '', recCol: '' },
-    { id: '3', name: 'PRODUCAO ESCRITA', avCol: '', recCol: '' },
-  ]);
+  const [selectedArea, setSelectedArea] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedField, setSelectedField] = useState<string>('both');
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -42,106 +53,119 @@ const Index = () => {
         const bData = new Uint8Array(evt.target?.result as ArrayBuffer);
         const workbook = XLSX.read(bData, { type: 'array' });
         
-        const newWorkbookData: Record<string, any[]> = {};
-        let detectedCols: string[] = [];
-
+        const newWorkbookData: WorkbookData = {};
         workbook.SheetNames.forEach(name => {
           const worksheet = workbook.Sheets[name];
           const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
           
-          // Tenta encontrar a linha de cabeçalho (primeira com conteúdo significativo)
-          const headerIdx = rows.findIndex(r => r.filter(c => String(c).trim() !== "").length > 3);
-          if (headerIdx === -1) return;
+          let areaRowIndex = rows.findIndex(row => 
+            row.some(cell => ['CH', 'CN', 'LI', 'MT'].includes(String(cell).trim().toUpperCase()))
+          );
 
-          const headers = rows[headerIdx].map((h, i) => String(h || `Coluna ${i+1}`).trim());
-          detectedCols = Array.from(new Set([...detectedCols, ...headers]));
+          if (areaRowIndex === -1) return;
 
-          const dataRows = rows.slice(headerIdx + 1);
-          newWorkbookData[name] = dataRows.map(row => {
-            const obj: any = {};
-            headers.forEach((h, i) => obj[h] = row[i]);
-            return obj;
-          }).filter(row => String(Object.values(row)[0]).length > 2);
+          const rawAreas = rows[areaRowIndex].map(h => String(h || '').trim().toUpperCase());
+          const processedHeaders: string[] = [];
+          let lastArea = "";
+
+          rawAreas.forEach((area, i) => {
+            if (['CH', 'CN', 'LI', 'MT'].includes(area)) {
+              lastArea = area;
+            }
+            if (area.startsWith('R') && ['RCH', 'RCN', 'RLI', 'RMT'].includes(area)) {
+                processedHeaders.push(area);
+            } else {
+                processedHeaders.push(lastArea || `COL_${i}`);
+            }
+          });
+
+          const dataRows = rows.slice(areaRowIndex + 1);
+          const formattedData = dataRows.map(row => {
+            const studentObj: any = { _raw: row };
+            AREAS.forEach(area => {
+                studentObj[area.id] = row.filter((_, i) => processedHeaders[i] === area.id);
+                studentObj[`R${area.id}`] = row.filter((_, i) => processedHeaders[i] === `R${area.id}`);
+            });
+            
+            // Nova lógica de extração de nome: pega o primeiro texto longo que não seja um número puro
+            // e que não seja um dos cabeçalhos de área.
+            studentObj._name = String(row.find(cell => {
+              const val = String(cell).trim();
+              return val.length > 5 && isNaN(Number(val)) && !['CH', 'CN', 'LI', 'MT'].includes(val);
+            }) || "");
+            
+            return studentObj;
+          }).filter(row => row._name.length > 3 && !row._name.includes("TOTAL") && !row._name.includes("MÉDIA"));
+
+          newWorkbookData[name] = formattedData;
         });
 
         setWorkbookData(newWorkbookData);
         setSheetNames(workbook.SheetNames);
-        setAllColumns(detectedCols);
         
         if (workbook.SheetNames.length > 0) {
           setSelectedTurma(workbook.SheetNames[0]);
-          const nameCol = detectedCols.find(c => /nome|aluno/i.test(c)) || detectedCols[0];
-          setStudentNameCol(nameCol);
-          showSuccess("Planilha carregada com sucesso!");
+          showSuccess("Planilha processada!");
         }
       } catch (err) {
-        showError("Erro ao ler o arquivo Excel.");
+        showError("Erro ao processar Excel.");
       }
     };
     reader.readAsArrayBuffer(file);
   };
 
-  const addCategory = () => {
-    setSegesCategories([...segesCategories, { id: Date.now().toString(), name: '', avCol: '', recCol: '' }]);
-  };
-
-  const removeCategory = (id: string) => {
-    setSegesCategories(segesCategories.filter(c => c.id !== id));
-  };
-
-  const updateCategory = (id: string, field: keyof SegesCategory, value: string) => {
-    setSegesCategories(segesCategories.map(c => c.id === id ? { ...c, [field]: value } : c));
-  };
-
-  const filteredData = useMemo(() => workbookData[selectedTurma] || [], [workbookData, selectedTurma]);
+  const filteredData = useMemo(() => {
+    return workbookData[selectedTurma] || [];
+  }, [workbookData, selectedTurma]);
 
   const generateScript = () => {
-    if (!selectedTurma || !studentNameCol) return showError("Selecione a turma e a coluna de nomes.");
-    
-    const activeMappings = segesCategories.filter(c => c.name && (c.avCol || c.recCol));
-    if (activeMappings.length === 0) return showError("Configure ao menos uma categoria com colunas do Excel.");
+    if (!selectedTurma) return showError("Selecione a Turma.");
+    if (!selectedArea) return showError("Selecione a Área.");
+
+    const categoryObj = CATEGORIES.find(c => c.id === selectedCategory);
 
     const scriptData = filteredData.map(row => {
-      const mapping = activeMappings.map(cat => ({
-        segesName: cat.name.toUpperCase(),
-        avValue: row[cat.avCol] !== undefined ? row[cat.avCol] : "",
-        recValue: row[cat.recCol] !== undefined ? row[cat.recCol] : ""
-      }));
-      return { 
-        name: String(row[studentNameCol]).split(/[-—(]/)[0].trim().toUpperCase(),
-        fullName: String(row[studentNameCol]).trim().toUpperCase(),
-        mapping 
+      const notes = row[selectedArea] || [];
+      const recs = row[`R${selectedArea}`] || [];
+      
+      // Limpa o nome para o script: remove observações como "-rem. da..." ou "(...)"
+      // Isso garante que o SEGES encontre o nome base do aluno.
+      const cleanName = row._name.split(/[-—(]/)[0].trim().toUpperCase();
+      
+      return {
+        name: cleanName,
+        fullName: row._name.trim().toUpperCase(),
+        notes,
+        recs
       };
     });
 
     const script = `
 (function() {
   const studentsData = ${JSON.stringify(scriptData)};
+  const categorySearch = "${categoryObj?.search || ''}";
+  const categoryId = "${selectedCategory}";
+  const field = "${selectedField}";
   
-  // Função para encontrar os índices das colunas no SEGES baseado no nome da categoria
-  const getSegesColumnIndices = () => {
+  const headers = Array.from(document.querySelectorAll('th')).map(th => th.innerText.toUpperCase());
+  const getColumnIndices = (searchText) => {
     const allThs = Array.from(document.querySelectorAll('thead tr:first-child th'));
-    // Filtra apenas as colunas que possuem inputs (geralmente as de avaliação)
-    const evalThs = allThs.filter(th => {
-      const text = th.innerText.toUpperCase();
-      return text.length > 2 && !text.includes('TOTAL') && !text.includes('FALTAS');
-    });
+    const targetTh = allThs.find(th => th.innerText.toUpperCase().includes(searchText));
+    if (!targetTh) return null;
     
-    const map = {};
-    evalThs.forEach((th, index) => {
-      map[th.innerText.toUpperCase()] = {
-        avIdx: index * 2,
-        recIdx: index * 2 + 1
-      };
-    });
-    return map;
+    const categoriesWithInputs = allThs.filter(th => 
+      ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO ESCRITA'].some(term => th.innerText.toUpperCase().includes(term))
+    );
+    
+    const catPos = categoriesWithInputs.indexOf(targetTh);
+    return catPos !== -1 ? [catPos * 2, catPos * 2 + 1] : null;
   };
 
-  const segesMap = getSegesColumnIndices();
   let count = 0;
   let notFound = [];
 
   studentsData.forEach(student => {
+    // Busca o aluno na página. Tenta pelo nome limpo primeiro.
     const row = Array.from(document.querySelectorAll('tr')).find(tr => {
       const text = tr.innerText.toUpperCase();
       return text.includes(student.name);
@@ -149,25 +173,34 @@ const Index = () => {
 
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
-      
-      student.mapping.forEach(m => {
-        // Tenta encontrar a coluna no SEGES que contenha o nome configurado
-        const segesKey = Object.keys(segesMap).find(key => key.includes(m.segesName));
-        
-        if (segesKey) {
-          const { avIdx, recIdx } = segesMap[segesKey];
+      const targetCategories = categoryId === 'all' 
+        ? ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO ESCRITA'] 
+        : [categorySearch];
 
-          if (m.avValue !== "" && inputs[avIdx]) {
-            inputs[avIdx].value = m.avValue.toString().replace('.', ',');
-            ['input', 'change', 'blur'].forEach(t => inputs[avIdx].dispatchEvent(new Event(t, { bubbles: true })));
+      targetCategories.forEach((search, catIdxInList) => {
+        const indices = getColumnIndices(search);
+        if (!indices) return;
+
+        const [idxAv, idxRec] = indices;
+        const dataIdx = categoryId === 'all' ? catIdxInList : parseInt(categoryId);
+
+        if ((field === 'av' || field === 'both') && inputs[idxAv]) {
+          const val = student.notes[dataIdx];
+          if (val !== undefined && val !== null && val !== "") {
+            inputs[idxAv].value = val.toString().replace('.', ',');
+            ['input', 'change', 'blur'].forEach(t => inputs[idxAv].dispatchEvent(new Event(t, { bubbles: true })));
           }
-          if (m.recValue !== "" && inputs[recIdx]) {
-            inputs[recIdx].value = m.recValue.toString().replace('.', ',');
-            ['input', 'change', 'blur'].forEach(t => inputs[recIdx].dispatchEvent(new Event(t, { bubbles: true })));
+        }
+
+        if ((field === 'rec' || field === 'both') && inputs[idxRec]) {
+          const val = student.recs[dataIdx];
+          if (val !== undefined && val !== null && val !== "") {
+            inputs[idxRec].value = val.toString().replace('.', ',');
+            ['input', 'change', 'blur'].forEach(t => inputs[idxRec].dispatchEvent(new Event(t, { bubbles: true })));
           }
         }
       });
-      
+
       count++;
       row.style.backgroundColor = '#f0fdf4';
       row.style.borderLeft = '4px solid #22c55e';
@@ -176,190 +209,143 @@ const Index = () => {
     }
   });
 
-  const msg = 'Sucesso! ' + count + ' alunos processados.';
-  const warn = notFound.length > 0 ? '\\n\\n' + notFound.length + ' alunos não encontrados na página:\\n' + notFound.join('\\n') : '';
+  const msg = 'Sucesso! ' + count + ' alunos atualizados.';
+  const warn = notFound.length > 0 ? '\\n\\n' + notFound.length + ' alunos não encontrados:\\n' + notFound.join('\\n') : '';
   alert(msg + warn);
 })();`;
 
     navigator.clipboard.writeText(script);
-    showSuccess("Script Universal copiado!");
+    showSuccess("Script inteligente copiado!");
   };
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        
+      <div className="max-w-6xl mx-auto space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Painel de Configuração Esquerdo */}
-          <div className="lg:col-span-5 space-y-6">
-            <Card className="border-none shadow-xl overflow-hidden rounded-3xl">
-              <CardHeader className="bg-gradient-to-br from-indigo-600 to-violet-700 text-white pb-8">
+          <div className="lg:col-span-4 space-y-6">
+            <Card className="border-none shadow-sm overflow-hidden">
+              <CardHeader className="bg-indigo-600 text-white pb-8">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="p-2 bg-white/20 rounded-xl">
-                    <GraduationCap className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-xl font-bold">Lançador Universal</CardTitle>
-                    <CardDescription className="text-indigo-100 text-xs">Configure qualquer planilha para o SEGES</CardDescription>
-                  </div>
+                  <GraduationCap className="w-6 h-6" />
+                  <CardTitle className="text-lg font-bold">Lançador SEGES</CardTitle>
                 </div>
+                <CardDescription className="text-indigo-100 text-xs">
+                  Gere scripts inteligentes que se adaptam ao SEGES.
+                </CardDescription>
               </CardHeader>
               
-              <CardContent className="p-6 space-y-6 -mt-6">
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 space-y-4">
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <FileSpreadsheet className="w-3 h-3" /> 1. Importar Dados
-                    </Label>
-                    <Input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="h-11 text-xs rounded-xl border-slate-200" />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-bold text-slate-400 uppercase">2. Turma (Aba)</Label>
-                      <Select value={selectedTurma} onValueChange={setSelectedTurma}>
-                        <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Aba..." /></SelectTrigger>
-                        <SelectContent>{sheetNames.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-bold text-slate-400 uppercase">3. Coluna Nomes</Label>
-                      <Select value={studentNameCol} onValueChange={setStudentNameCol}>
-                        <SelectTrigger className="h-10 text-xs rounded-xl"><SelectValue placeholder="Coluna..." /></SelectTrigger>
-                        <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+              <CardContent className="p-5 space-y-6 -mt-6">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3">
+                  <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <FileSpreadsheet className="w-3 h-3" /> 1. Planilha
+                  </Label>
+                  <Input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} className="h-12 text-xs" />
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between px-1">
-                    <Label className="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2">
-                      <Settings2 className="w-4 h-4" /> 4. Mapeamento de Notas
-                    </Label>
-                    <Button onClick={addCategory} variant="ghost" size="sm" className="h-8 text-[10px] text-indigo-600 hover:bg-indigo-50 rounded-lg gap-1">
-                      <Plus className="w-3 h-3" /> Adicionar Campo
-                    </Button>
-                  </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600">2. Turma (Planilha)</Label>
+                  <Select value={selectedTurma} onValueChange={setSelectedTurma} disabled={sheetNames.length === 0}>
+                    <SelectTrigger className="bg-slate-50 h-11"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>{sheetNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
 
-                  <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    {segesCategories.map((cat) => (
-                      <div key={cat.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 relative group transition-all hover:border-indigo-200 hover:shadow-md hover:shadow-indigo-50">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => removeCategory(cat.id)}
-                          className="absolute top-2 right-2 h-7 w-7 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                        
-                        <div className="space-y-1">
-                          <Label className="text-[9px] text-slate-400 font-bold uppercase">Nome no SEGES (ex: PROVA)</Label>
-                          <Input 
-                            placeholder="Ex: DISCURSIVA ou PROVA"
-                            value={cat.name} 
-                            onChange={(e) => updateCategory(cat.id, 'name', e.target.value)}
-                            className="h-9 text-xs font-bold bg-white rounded-lg border-slate-200 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-[9px] text-slate-400 font-bold uppercase">Coluna Av. (Excel)</Label>
-                            <Select value={cat.avCol} onValueChange={(v) => updateCategory(cat.id, 'avCol', v)}>
-                              <SelectTrigger className="h-8 text-[10px] bg-white rounded-lg"><SelectValue placeholder="Escolher..." /></SelectTrigger>
-                              <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[9px] text-slate-400 font-bold uppercase">Coluna Rec. (Excel)</Label>
-                            <Select value={cat.recCol} onValueChange={(v) => updateCategory(cat.id, 'recCol', v)}>
-                              <SelectTrigger className="h-8 text-[10px] bg-white rounded-lg"><SelectValue placeholder="Escolher..." /></SelectTrigger>
-                              <SelectContent>{allColumns.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold text-slate-600">3. Área</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {AREAS.map(area => (
+                      <button key={area.id} onClick={() => setSelectedArea(area.id)} className={`p-2 rounded-lg text-xs font-bold border-2 transition-all ${selectedArea === area.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-100 text-slate-500'}`}>{area.id}</button>
                     ))}
                   </div>
                 </div>
 
-                <Button 
-                  onClick={generateScript} 
-                  disabled={!selectedTurma || segesCategories.every(c => !c.avCol && !c.recCol)} 
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 py-8 text-lg font-bold rounded-2xl shadow-xl shadow-indigo-100 transition-all active:scale-95"
-                >
-                  <ClipboardCopy className="w-6 h-6 mr-2" /> Copiar Script Completo
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Categoria</Label>
+                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                      <SelectTrigger className="bg-slate-50 h-10 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>{CATEGORIES.map(cat => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Campo</Label>
+                    <Select value={selectedField} onValueChange={setSelectedField}>
+                      <SelectTrigger className="bg-slate-50 h-10 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>{FIELDS.map(f => <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <Button onClick={generateScript} disabled={!selectedTurma || !selectedArea} className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 text-md font-bold rounded-xl shadow-lg mt-2">
+                  <ClipboardCopy className="w-5 h-5 mr-2" /> Copiar Script
                 </Button>
 
-                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex gap-3">
-                  <Info className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-amber-800 leading-relaxed">
-                    <strong>Como usar:</strong> Após copiar o script, vá ao SEGES na tela de lançar notas, aperte <strong>F12</strong>, clique em <strong>Console</strong>, cole o código e aperte <strong>Enter</strong>.
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex gap-2">
+                  <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-blue-700 leading-relaxed">
+                    <strong>Dica:</strong> Certifique-se de que a <strong>Turma</strong> selecionada acima é a mesma que está aberta no seu navegador.
                   </p>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Painel de Visualização Direito */}
-          <div className="lg:col-span-7">
-            <Card className="border-none shadow-xl h-full min-h-[600px] overflow-hidden flex flex-col rounded-3xl">
-              <CardHeader className="border-b border-slate-100 bg-white p-6">
+          <div className="lg:col-span-8">
+            <Card className="border-none shadow-sm h-full min-h-[600px] overflow-hidden flex flex-col">
+              <CardHeader className="border-b border-slate-100 bg-white">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl font-bold text-slate-800">Conferência de Dados</CardTitle>
-                    <CardDescription className="text-xs">Verifique se as notas estão nas colunas certas</CardDescription>
-                  </div>
-                  {filteredData.length > 0 && (
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-full border border-emerald-100">
-                      <CheckCircle2 className="w-3 h-3" />
-                      {filteredData.length} Alunos Identificados
+                  <CardTitle className="text-lg">Conferência de Notas</CardTitle>
+                  {selectedArea && selectedCategory !== 'all' && (
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-full border border-amber-100">
+                      <AlertCircle className="w-3 h-3" />
+                      Lançando apenas: {CATEGORIES.find(c => c.id === selectedCategory)?.name} ({selectedField.toUpperCase()})
                     </div>
                   )}
                 </div>
               </CardHeader>
               <CardContent className="p-0 flex-1 bg-white">
                 {filteredData.length > 0 ? (
-                  <div className="overflow-auto max-h-[800px]">
+                  <div className="overflow-auto max-h-[700px]">
                     <Table>
-                      <TableHeader className="bg-slate-50/80 backdrop-blur-sm sticky top-0 z-10">
+                      <TableHeader className="bg-slate-50/50 sticky top-0 z-10">
                         <TableRow>
-                          <TableHead className="font-bold text-slate-700 pl-8 py-4">Aluno</TableHead>
-                          {segesCategories.filter(c => c.name).map(cat => (
-                            <TableHead key={cat.id} className="text-center font-bold text-indigo-600 text-[10px] uppercase leading-tight px-4">
-                              {cat.name}<br/><span className="text-slate-400 font-normal">Av | Rec</span>
-                            </TableHead>
-                          ))}
+                          <TableHead className="font-bold text-slate-700 pl-6">Aluno</TableHead>
+                          <TableHead className="text-center font-bold text-indigo-600">
+                            {selectedCategory === 'all' ? `Notas ${selectedArea}` : `Nota a Lançar`}
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredData.map((row, i) => (
-                          <TableRow key={i} className="hover:bg-indigo-50/30 transition-colors border-b border-slate-50">
-                            <TableCell className="font-medium text-slate-900 text-[10px] pl-8 py-3">{row[studentNameCol] || '-'}</TableCell>
-                            {segesCategories.filter(c => c.name).map(cat => (
-                              <TableCell key={cat.id} className="text-center text-[10px] font-bold px-4">
-                                <span className="text-indigo-600">{row[cat.avCol] !== undefined && row[cat.avCol] !== "" ? row[cat.avCol] : "-"}</span>
-                                <span className="mx-1.5 text-slate-200">|</span>
-                                <span className="text-orange-600">{row[cat.recCol] !== undefined && row[cat.recCol] !== "" ? row[cat.recCol] : "-"}</span>
+                        {filteredData.map((row, i) => {
+                          const notes = row[selectedArea] || [];
+                          const recs = row[`R${selectedArea}`] || [];
+                          let displayValue = "";
+                          
+                          if (selectedCategory === 'all') {
+                            displayValue = notes.join(' | ');
+                          } else {
+                            const idx = parseInt(selectedCategory);
+                            if (selectedField === 'av') displayValue = notes[idx] || "-";
+                            else if (selectedField === 'rec') displayValue = recs[idx] || "-";
+                            else displayValue = `Av: ${notes[idx] || "-"} | Rec: ${recs[idx] || "-"}`;
+                          }
+
+                          return (
+                            <TableRow key={i} className="hover:bg-slate-50/50 transition-colors">
+                              <TableCell className="font-medium text-slate-900 text-xs pl-6">{row._name || '-'}</TableCell>
+                              <TableCell className="text-center font-bold text-indigo-600 text-xs">
+                                {displayValue}
                               </TableCell>
-                            ))}
-                          </TableRow>
-                        ))}
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-slate-400 p-12 text-center">
-                    <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-                      <Layers className="w-10 h-10 opacity-20" />
-                    </div>
-                    <p className="text-lg font-bold text-slate-600">Nenhum dado para exibir</p>
-                    <p className="text-sm opacity-60 mt-2 max-w-xs mx-auto">
-                      Importe sua planilha e configure o mapeamento das colunas para ver a prévia do lançamento aqui.
-                    </p>
+                  <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-slate-400">
+                    <Layers className="w-16 h-16 mb-4 opacity-10" />
+                    <p className="text-sm font-medium">Aguardando dados da planilha</p>
                   </div>
                 )}
               </CardContent>
