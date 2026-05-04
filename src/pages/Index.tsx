@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileSpreadsheet, ClipboardCopy, Settings2, Layers, GraduationCap, CheckCircle2, AlertCircle } from "lucide-react";
+import { FileSpreadsheet, ClipboardCopy, Settings2, Layers, GraduationCap, CheckCircle2, AlertCircle, Info } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
@@ -23,9 +23,9 @@ const AREAS = [
 
 const CATEGORIES = [
   { id: 'all', name: 'Todas as Categorias' },
-  { id: '0', name: 'Atividade Discursiva' },
-  { id: '1', name: 'Prova Interdisciplinar' },
-  { id: '2', name: 'Produção Escrita' },
+  { id: '0', name: 'Atividade Discursiva', search: 'DISCURSIVA' },
+  { id: '1', name: 'Prova Interdisciplinar', search: 'INTERDISCIPLINAR' },
+  { id: '2', name: 'Produção Escrita', search: 'PRODUCAO ESCRITA' },
 ];
 
 const FIELDS = [
@@ -115,45 +115,51 @@ const Index = () => {
     if (!selectedTurma) return showError("Selecione a Turma.");
     if (!selectedArea) return showError("Selecione a Área.");
 
+    const categoryObj = CATEGORIES.find(c => c.id === selectedCategory);
+
     const scriptData = filteredData.map(row => {
       const notes = row[selectedArea] || [];
       const recs = row[`R${selectedArea}`] || [];
-      
-      // Se uma categoria específica for selecionada, enviamos apenas ela para o script
-      let finalValue = "";
-      let targetInputIndex = -1;
-
-      if (selectedCategory !== 'all') {
-        const catIdx = parseInt(selectedCategory);
-        if (selectedField === 'av' || selectedField === 'both') {
-            finalValue = String(notes[catIdx] || "");
-            targetInputIndex = catIdx * 2;
-        } else if (selectedField === 'rec') {
-            finalValue = String(recs[catIdx] || "");
-            targetInputIndex = (catIdx * 2) + 1;
-        }
-      }
-
       return {
         name: row._name.trim().toUpperCase(),
-        value: finalValue,
-        index: targetInputIndex,
-        // Fallback para 'all'
-        allNotes: notes,
-        allRecs: recs
+        notes,
+        recs
       };
     });
-
-    const isSingle = selectedCategory !== 'all' && selectedField !== 'both';
 
     const script = `
 (function() {
   const studentsData = ${JSON.stringify(scriptData)};
-  const isSingle = ${isSingle};
-  const category = "${selectedCategory}";
+  const categorySearch = "${categoryObj?.search || ''}";
+  const categoryId = "${selectedCategory}";
   const field = "${selectedField}";
   
+  // 1. Mapear colunas do SEGES dinamicamente
+  const headers = Array.from(document.querySelectorAll('th')).map(th => th.innerText.toUpperCase());
+  const getColumnIndices = (searchText) => {
+    const thIndex = headers.findIndex(h => h.includes(searchText));
+    if (thIndex === -1) return null;
+    
+    // Conta quantos inputs existem antes desta categoria para achar o índice inicial
+    let inputCount = 0;
+    const allThs = Array.from(document.querySelectorAll('thead tr:first-child th'));
+    const targetTh = allThs.find(th => th.innerText.toUpperCase().includes(searchText));
+    
+    if (!targetTh) return null;
+    
+    // No SEGES, cada categoria tem 2 inputs (Av e Rec)
+    // Vamos descobrir a posição da categoria entre as que possuem inputs
+    const categoriesWithInputs = allThs.filter(th => 
+      ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO ESCRITA'].some(term => th.innerText.toUpperCase().includes(term))
+    );
+    
+    const catPos = categoriesWithInputs.indexOf(targetTh);
+    return catPos !== -1 ? [catPos * 2, catPos * 2 + 1] : null;
+  };
+
   let count = 0;
+  let notFound = [];
+
   studentsData.forEach(student => {
     const row = Array.from(document.querySelectorAll('tr')).find(tr => 
       tr.innerText.toUpperCase().includes(student.name)
@@ -162,37 +168,51 @@ const Index = () => {
     if (row) {
       const inputs = Array.from(row.querySelectorAll('input[type="text"]'));
       
-      if (isSingle) {
-        // Modo Ultra-Preciso: Apenas 1 coluna
-        const input = inputs[student.index];
-        if (input && student.value !== "") {
-          input.value = student.value.toString().replace('.', ',');
-          ['input', 'change', 'blur'].forEach(t => input.dispatchEvent(new Event(t, { bubbles: true })));
-        }
-      } else {
-        // Modo Múltiplo (Todas as categorias ou Av+Rec)
-        const targetIndices = category === 'all' ? [0, 1, 2, 3, 4, 5] : [parseInt(category)*2, parseInt(category)*2 + 1];
-        targetIndices.forEach(idx => {
-          const catIdx = Math.floor(idx / 2);
-          const isAv = idx % 2 === 0;
-          if ((field === 'av' && !isAv) || (field === 'rec' && isAv)) return;
-          const val = isAv ? student.allNotes[catIdx] : student.allRecs[catIdx];
-          if (val !== undefined && val !== null && val !== "" && inputs[idx]) {
-            inputs[idx].value = val.toString().replace('.', ',');
-            ['input', 'change', 'blur'].forEach(t => inputs[idx].dispatchEvent(new Event(t, { bubbles: true })));
+      const targetCategories = categoryId === 'all' 
+        ? ['DISCURSIVA', 'INTERDISCIPLINAR', 'PRODUCAO ESCRITA'] 
+        : [categorySearch];
+
+      targetCategories.forEach((search, catIdxInList) => {
+        const indices = getColumnIndices(search);
+        if (!indices) return;
+
+        const [idxAv, idxRec] = indices;
+        const dataIdx = categoryId === 'all' ? catIdxInList : parseInt(categoryId);
+
+        // Lançar Avaliação
+        if ((field === 'av' || field === 'both') && inputs[idxAv]) {
+          const val = student.notes[dataIdx];
+          if (val !== undefined && val !== null && val !== "") {
+            inputs[idxAv].value = val.toString().replace('.', ',');
+            ['input', 'change', 'blur'].forEach(t => inputs[idxAv].dispatchEvent(new Event(t, { bubbles: true })));
           }
-        });
-      }
+        }
+
+        // Lançar Recuperação
+        if ((field === 'rec' || field === 'both') && inputs[idxRec]) {
+          const val = student.recs[dataIdx];
+          if (val !== undefined && val !== null && val !== "") {
+            inputs[idxRec].value = val.toString().replace('.', ',');
+            ['input', 'change', 'blur'].forEach(t => inputs[idxRec].dispatchEvent(new Event(t, { bubbles: true })));
+          }
+        }
+      });
+
       count++;
       row.style.backgroundColor = '#f0fdf4';
       row.style.borderLeft = '4px solid #22c55e';
+    } else {
+      notFound.push(student.name);
     }
   });
-  alert('Sucesso! ' + count + ' alunos atualizados na turma "${selectedTurma}".');
+
+  const msg = 'Sucesso! ' + count + ' alunos atualizados.';
+  const warn = notFound.length > 0 ? '\\n\\n' + notFound.length + ' alunos não encontrados na página (verifique se a turma está correta).' : '';
+  alert(msg + warn);
 })();`;
 
     navigator.clipboard.writeText(script);
-    showSuccess("Script exclusivo copiado!");
+    showSuccess("Script inteligente copiado!");
   };
 
   return (
@@ -207,7 +227,7 @@ const Index = () => {
                   <CardTitle className="text-lg font-bold">Lançador SEGES</CardTitle>
                 </div>
                 <CardDescription className="text-indigo-100 text-xs">
-                  Gere scripts precisos para o lançamento de notas.
+                  Gere scripts inteligentes que se adaptam ao SEGES.
                 </CardDescription>
               </CardHeader>
               
@@ -220,7 +240,7 @@ const Index = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-600">2. Turma</Label>
+                  <Label className="text-xs font-bold text-slate-600">2. Turma (Planilha)</Label>
                   <Select value={selectedTurma} onValueChange={setSelectedTurma} disabled={sheetNames.length === 0}>
                     <SelectTrigger className="bg-slate-50 h-11"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>{sheetNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}</SelectContent>
@@ -256,6 +276,13 @@ const Index = () => {
                 <Button onClick={generateScript} disabled={!selectedTurma || !selectedArea} className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 text-md font-bold rounded-xl shadow-lg mt-2">
                   <ClipboardCopy className="w-5 h-5 mr-2" /> Copiar Script
                 </Button>
+
+                <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex gap-2">
+                  <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-blue-700 leading-relaxed">
+                    <strong>Dica:</strong> Certifique-se de que a <strong>Turma</strong> selecionada acima é a mesma que está aberta no seu navegador.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </div>
