@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Settings2, Layers, Navigation, Plus, Trash2, Search, ClipboardCopy, CheckSquare, Square } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Settings2, Layers, Navigation, Plus, Trash2, Search, ClipboardCopy, CheckSquare, Square, AlertCircle, Terminal } from "lucide-react";
 import * as XLSX from 'xlsx';
 import { showSuccess, showError } from "@/utils/toast";
 import { MadeWithDyad } from "@/components/made-with-dyad";
@@ -143,7 +144,6 @@ const Index = () => {
   
   const normalize = (str) => str.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toUpperCase().trim();
   
-  // Função para limpar o nome da planilha (remove observações após hífens ou parênteses)
   const cleanExcelName = (name) => {
     return normalize(name).split(/[\\-\\(]/)[0].trim();
   };
@@ -160,11 +160,8 @@ const Index = () => {
   studentsData.forEach(student => {
     const excelClean = cleanExcelName(student.name);
     
-    // Busca a linha do aluno tentando várias estratégias de match
     const row = Array.from(document.querySelectorAll('tr')).find(tr => {
       const rowText = normalize(tr.innerText);
-      // 1. O nome limpo da planilha está na linha?
-      // 2. Ou o texto da linha (nome no SEGES) está contido no nome da planilha?
       return rowText.includes(excelClean) || excelClean.includes(rowText.replace(/[0-9]/g, '').trim());
     });
     
@@ -342,6 +339,20 @@ const Index = () => {
                 <Button onClick={generateScript} disabled={!selectedTurma} className="w-full bg-[#4338ca] hover:bg-[#3730a3] py-7 text-md font-bold rounded-2xl shadow-lg shadow-indigo-100 mt-4">
                   <ClipboardCopy className="w-5 h-5 mr-2" /> Copiar Script de Lançamento
                 </Button>
+
+                <Alert className="bg-amber-50 border-amber-200 mt-6 rounded-2xl">
+                  <AlertCircle className="h-5 w-5 text-amber-600" />
+                  <AlertTitle className="text-amber-800 font-bold flex items-center gap-2">
+                    Lembrete de Execução
+                  </AlertTitle>
+                  <AlertDescription className="text-amber-700 text-xs space-y-2 mt-2">
+                    <p>Após copiar o script, vá para a página da turma no SEGES, abra o <strong>Console (F12)</strong>, cole o código e aperte <strong>Enter</strong>.</p>
+                    <div className="bg-amber-100/50 p-2 rounded-lg border border-amber-200/50 flex items-start gap-2">
+                      <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
+                      <p>Se for sua primeira vez, o navegador pode pedir para você digitar <code className="bg-white px-1 rounded border border-amber-300 font-mono text-[10px]">allow pasting</code> antes de permitir colar.</p>
+                    </div>
+                  </AlertDescription>
+                </Alert>
               </CardContent>
             </Card>
           </div>
