@@ -219,7 +219,7 @@ const Index = () => {
               </div>
               <div className="text-center md:text-left">
                 <CardTitle className="text-4xl md:text-5xl font-black tracking-tight mb-2">
-                  Lançador de Notas SEGES
+                  Lança-Notas
                 </CardTitle>
                 <CardDescription className="text-indigo-100 text-lg md:text-xl font-medium opacity-90">
                   Mapeamento inteligente por coordenadas de planilha.

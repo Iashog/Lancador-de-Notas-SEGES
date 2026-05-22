@@ -1,4 +1,4 @@
-# Lançador de Notas SEGES
+# Lança-Notas
 
 Este aplicativo foi desenvolvido para automatizar o lançamento de notas no sistema SEGES (Sedu-ES) a partir de planilhas Excel personalizadas.
 
